@@ -158,7 +158,7 @@ var MacroQuitOperation = OperationAdapter(func(i *Interpreter) error {
 var PrintOperation = OperationAdapter(func(i *Interpreter) error {
 	p := i.Stack.Peek().Dup()
 	p.UpdatePrecision(i.Precision)
-	i.println(p)
+	i.println(p.Text(i.OutputRadix))
 	return nil
 })
 
@@ -170,7 +170,7 @@ var PopAndPrintOperation = OperationAdapter(func(i *Interpreter) error {
 	val := i.Stack.Pop()
 	dup := val.Dup()
 	dup.UpdatePrecision(i.Precision)
-	i.print(dup)
+	i.print(dup.Text(i.OutputRadix))
 	return nil
 })
 
@@ -186,7 +186,7 @@ var PrintStackOperation = OperationAdapter(func(i *Interpreter) error {
 		dup := num.Dup()
 		dup.UpdatePrecision(i.Precision)
 		// dc prints stack in reverse order, so top-of-stack is top-of-list
-		defer func(d *Value) { i.println(d) }(dup)
+		defer func(d *Value) { i.println(d.Text(i.OutputRadix)) }(dup)
 	}
 	return nil
 })
@@ -380,6 +380,49 @@ var SetPrecisionOperation = OperationAdapter(func(i *Interpreter) error {
 // GetPrecisionOperation implements the 'K' command.
 var GetPrecisionOperation = OperationAdapter(func(i *Interpreter) error {
 	i.Stack.Push(&Value{intval: big.NewInt(int64(i.Precision))})
+	return nil
+})
+
+// SetInputRadixOperation implements the 'i' command.
+var SetInputRadixOperation = OperationAdapter(func(i *Interpreter) error {
+	if i.Stack.Len() < 1 {
+		return ErrStackTooShort
+	}
+	p := i.Stack.Pop()
+	err := ensureNumeric(p)
+	if err != nil {
+		return err
+	}
+	i.InputRadix = uint8(p.Int())
+	if i.InputRadix > 18 {
+		return fmt.Errorf(`warning: godc can't tell the difference between I as a digit and the I command`)
+	}
+	return nil
+})
+
+// GetInputRedixOperation implements the 'I' command.
+var GetInputRadixOperation = OperationAdapter(func(i *Interpreter) error {
+	i.Stack.Push(&Value{intval: big.NewInt(int64(i.InputRadix))})
+	return nil
+})
+
+// SetInputRadixOperation implements the 'o' command.
+var SetOutputRadixOperation = OperationAdapter(func(i *Interpreter) error {
+	if i.Stack.Len() < 1 {
+		return ErrStackTooShort
+	}
+	p := i.Stack.Pop()
+	err := ensureNumeric(p)
+	if err != nil {
+		return err
+	}
+	i.OutputRadix = uint8(p.Int())
+	return nil
+})
+
+// GetOutputRedixOperation implements the 'I' command.
+var GetOutputRadixOperation = OperationAdapter(func(i *Interpreter) error {
+	i.Stack.Push(&Value{intval: big.NewInt(int64(i.OutputRadix))})
 	return nil
 })
 

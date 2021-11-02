@@ -25,6 +25,8 @@ type Interpreter struct {
 	Operations       map[rune]Operation
 	output           io.Writer
 	QuitLevel        int
+	InputRadix       uint8
+	OutputRadix      uint8
 }
 
 // NewInterpreter intitializes an interpreter and its
@@ -37,6 +39,8 @@ func NewInterpreter() *Interpreter {
 		i.Registers[r] = new(Stack)
 	}
 	i.output = os.Stdout
+	i.InputRadix = 10
+	i.OutputRadix = 10
 	i.Operations = map[rune]Operation{
 		'0': NumberBuilderOperation,
 		'1': NumberBuilderOperation,
@@ -48,6 +52,14 @@ func NewInterpreter() *Interpreter {
 		'7': NumberBuilderOperation,
 		'8': NumberBuilderOperation,
 		'9': NumberBuilderOperation,
+		'A': NumberBuilderOperation,
+		'B': NumberBuilderOperation,
+		'C': NumberBuilderOperation,
+		'D': NumberBuilderOperation,
+		'E': NumberBuilderOperation,
+		'F': NumberBuilderOperation,
+		'G': NumberBuilderOperation,
+		'H': NumberBuilderOperation,
 		'.': NumberBuilderOperation,
 		'_': NumberBuilderOperation,
 		'q': QuitOperation,
@@ -72,10 +84,10 @@ func NewInterpreter() *Interpreter {
 		'S': MoveToRegisterStackOperation,
 		'L': MoveFromRegisterStackOperation,
 		'k': SetPrecisionOperation,
-		'i': NotImplementedOperation,       // TODO: set input radix
-		'o': NotImplementedOperation,       // TODO: set output radix
-		'I': NotImplementedOperation,       // TODO: get input radix
-		'O': NotImplementedOperation,       // TODO: get output radix
+		'i': SetInputRadixOperation,        // TODO: set input radix
+		'o': SetOutputRadixOperation,       // TODO: set output radix
+		'I': GetInputRadixOperation,        // TODO: get input radix
+		'O': GetOutputRadixOperation,       // TODO: get output radix
 		'[': StringBuilderOperation,        // begin string
 		'a': NotImplementedOperation,       // TODO: chr(i) (for int) or s[0] (for string)
 		'x': ExecuteMacroOperation,         // execute macro

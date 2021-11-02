@@ -37,6 +37,42 @@ func TestValueString(t *testing.T) {
 	}
 }
 
+func TestValueText(t *testing.T) {
+	test := func(input, precision int64, radix uint8, expected string) {
+		val := &Value{
+			intval:    big.NewInt(input),
+			precision: int(precision),
+		}
+		actual := val.Text(radix)
+		if actual != expected {
+			t.Fatalf(`expected %d * 10^-%d in radix %d to be %q; was %q`, input, precision, radix, expected, actual)
+		}
+	}
+
+	t.Run(`some easy integers`, func(t *testing.T) {
+		test(256, 0, 16, `100`)
+		test(64, 0, 8, `100`)
+		test(27, 0, 3, `1000`)
+
+		test(55, 0, 16, `37`)
+	})
+
+	t.Run(`some easy integers with precision`, func(t *testing.T) {
+		test(2560, 1, 16, `100.0`)
+		test(6400, 2, 8, `100.00`)
+		test(27000, 3, 3, `1000.000`)
+
+		test(550000, 4, 16, `37.0000`)
+	})
+
+	t.Run(`some rational fractions`, func(t *testing.T) {
+		test(15, 1, 16, `1.8`)         // 0x1.8 = 1.5
+		test(25, 2, 16, `0.40`)        // 0x0.40 = 0.25
+		test(640625, 4, 16, `40.1000`) // 0x40.1 = 64.0625
+		test(3, 1, 16, `0.4`)          // 0x0.48 = 0.3 Values are truncated.
+	})
+}
+
 func TestUpdatePrecision(t *testing.T) {
 	n := newValue(100, 2)
 	expectedPattern := regexp.MustCompile(`1(\.0+)?`)

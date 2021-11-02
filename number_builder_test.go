@@ -7,8 +7,7 @@ import (
 func TestNumberBuilder(t *testing.T) {
 	interp := NewInterpreter()
 	test := func(input string) {
-		runes := []rune(input)
-		for _, r := range runes {
+		for _, r := range input {
 			err := interp.Interpret(r)
 			if err != nil {
 				t.Fatalf(`error interpreting rune %q: %v`, string(r), err)

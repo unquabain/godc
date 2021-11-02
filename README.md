@@ -136,10 +136,6 @@ For other commands, see the `dc(1)` man page.
 The following `dc` commands are not yet implemented:
 
 - `P` I don't really understand this one.
-- `i` Set input radix
-- `o` Set output radix
-- `I` Get input radix
-- `O` Get output radix
 - `a` Converts a number to a character, like chr(i)
 - `?` Gets input from STDIN, so you can write console programs.
 - `Z` Pushes the length of the top value onto the stack (digits or string length)

@@ -346,3 +346,100 @@ func TestNegativeMacroOperations(t *testing.T) {
 		expect(`nope`)
 	})
 }
+
+func TestRadixOperations(t *testing.T) {
+	interpreter := NewInterpreter()
+	buff := new(strings.Builder)
+	interpreter.output = buff
+	test := func(str string) {
+		interpreter.InputRadix = 10
+		interpreter.OutputRadix = 10
+		err := testWithInterpreter(interpreter, str)
+		if err != nil {
+			t.Fatalf(`could not set up test %q: %v`, str, err)
+		}
+	}
+
+	expect := func(values ...string) {
+		err := expectWithInterpreter(buff, values...)
+		if err != nil {
+			t.Fatalf(`test failed: %v`, err)
+		}
+		interpreter.Interpret('c')
+	}
+
+	t.Run(`decimal to hex conversion of integers`, func(t *testing.T) {
+		test(`10i16o0k5`)
+		expect(`5`)
+
+		test(`10i16o0k10`)
+		expect(`A`)
+
+		test(`10i16o0k32`)
+		expect(`20`)
+
+		test(`10i16o0k35`)
+		expect(`23`)
+	})
+
+	t.Run(`decimal to hex conversion with precision`, func(t *testing.T) {
+		test(`10i16o4k5`)
+		expect(`5.0000`)
+
+		test(`10i16o4k10`)
+		expect(`A.0000`)
+
+		test(`10i16o4k32.5`)
+		expect(`20.8000`)
+
+		test(`10i16o4k35.25`)
+		expect(`23.4000`)
+	})
+
+	t.Run(`hex to decimal conversion of integers`, func(t *testing.T) {
+		test(`16iAo0k5`)
+		expect(`5`)
+
+		test(`16iAo0kA`)
+		expect(`10`)
+
+		test(`16iAo0k20`)
+		expect(`32`)
+
+		test(`16iAo0k23`)
+		expect(`35`)
+	})
+
+	t.Run(`hex to decimal conversion with precision`, func(t *testing.T) {
+		test(`16iAo4k5`)
+		expect(`5.0000`)
+
+		test(`16iAo4kA`)
+		expect(`10.0000`)
+
+		test(`16iAo4k20.8`)
+		expect(`32.5000`)
+
+		test(`16iAo4k23.4`)
+		expect(`35.2500`)
+	})
+
+	t.Run(`converting different bases`, func(t *testing.T) {
+		test(`0k16i9oA`)
+		expect(`11`)
+
+		test(`0k16o9i11`)
+		expect(`A`)
+	})
+
+	t.Run(`output commands`, func(t *testing.T) {
+		test(`8oO`)
+		expect(`10`)
+
+		test(`8oO 10o`)
+		expect(`8`)
+
+		test(`14iI`)
+		expect(`14`)
+	})
+}

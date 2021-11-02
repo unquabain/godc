@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/big"
+	"strings"
 )
 
 // ErrNotANumber is an error returned if you try to perform a numerical
@@ -45,28 +46,79 @@ func precisionToFactor(precision int) *big.Int {
 	return (&pow).Exp(ten, prec, mod)
 }
 
-// String implements fmt.Stringer
-func (n *Value) String() string {
+func (n *Value) Text(radix uint8) string {
+	// If the value is a string, print the string
 	if n.Type == VTString {
 		return string(n.strval)
 	}
-	str := n.intval.String()
+	// If the value is an integer, let math/big
+	// handle it.
 	if n.precision == 0 {
-		return str
+		return strings.ToUpper(n.intval.Text(int(radix)))
 	}
-	split := len(str) - n.precision
-	if split < 0 {
-		fmt.Printf(
-			"str: %q; len(str): %d; precision: %d; n %d\n",
-			str, len(str), n.precision, n.intval,
-		)
-		split = 0
+
+	// We've got a little math to do.
+
+	// The power of 10 corresponding to our precision value
+	factor := precisionToFactor(n.precision)
+
+	// The *math/bit.Int that holds our multiplied integer
+	val := n.intval
+
+	// The rounding gets a little exciting for negative numbers.
+	// Let's deal only with absolutes, like a Sith
+	sign := val.Sign()
+	val = val.Abs(val)
+
+	// Getting the integer portion is easy.
+	intVal := big.NewInt(0)
+	intVal.Div(val, factor)
+
+	// Getting the fractional portion is a bit
+	// trickier.
+	fracVal := big.NewInt(0)
+	fracVal.Sub(val, big.NewInt(0).Mul(intVal, factor))
+
+	// fracVal is now x such that (10^precision)/x is the actual
+	// fractional value.
+
+	// Get radix^precision
+	bigRadix := big.NewInt(int64(radix))
+	bigRadix.Exp(bigRadix, big.NewInt(int64(n.precision)), nil)
+
+	// Convert fracVal so that it's x in frac = (radix^precision)/x
+	// Go big before going small to try to preserve as much precision
+	// as possible.
+	fracVal.Mul(fracVal, bigRadix)
+	fracVal.Div(fracVal, factor)
+
+	// If fracVal is less than 1/radix, we're going to have to
+	// insert leading zeroes.
+	fracFormat := fmt.Sprintf(`%%0%ds`, n.precision)
+
+	// Get the funky formats.
+	intStr := intVal.Text(int(radix))
+	fracStr := fracVal.Text(int(radix))
+
+	// Chop off any extra digits we might have picked up.
+	if len(fracStr) > n.precision {
+		fracStr = fracStr[:n.precision]
 	}
-	intPart, fracPart := str[:split], str[split:]
-	if intPart == `` {
-		intPart = `0`
+
+	// Add those leading zeroes
+	fracStr = fmt.Sprintf(fracFormat, fracStr)
+
+	// Print it with a decimal, remembering to add the sign
+	// back in.
+	if sign < 0 {
+		return strings.ToUpper(fmt.Sprintf(`-%s.%s`, intStr, fracStr))
 	}
-	return fmt.Sprintf(`%s.%s`, intPart, fracPart)
+	return strings.ToUpper(fmt.Sprintf(`%s.%s`, intStr, fracStr))
+}
+
+// String implements the fmt.Stringer interface
+func (n *Value) String() string {
+	return n.Text(10)
 }
 
 // Format tries to implement fmt.Formatter
@@ -75,7 +127,7 @@ func (n *Value) Format(f fmt.State, verb rune) {
 	if verb != 's' && verb != 'v' {
 		return
 	}
-	f.Write([]byte(n.String()))
+	f.Write([]byte(n.Text(10)))
 }
 
 // UpdatePrecision sets the precision, and also multiplies
