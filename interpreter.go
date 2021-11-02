@@ -6,33 +6,29 @@ import (
 	"os"
 )
 
-var StackTooShortError = fmt.Errorf(`stack too short`)
-var ExitRequestedError = fmt.Errorf(`goodbye`)
+// ErrStackTooShort is returned when an operation wants more
+// arguments than are available.
+var ErrStackTooShort = fmt.Errorf(`stack too short`)
 
-type InterpreterState uint8
+// ErrExitRequested is returned when an operation asks to quit
+// the program or the currently running macro.
+var ErrExitRequested = fmt.Errorf(`goodbye`)
 
-const (
-	ISImmediate InterpreterState = iota
-	ISRegisterLoad
-	ISRegisterStackPush
-	ISRegisterRestore
-	ISRegisterStackPop
-	ISRegisterStackPeek
-	ISRegisterStackPrint
-)
-
+// Interpreter interprets commands and macros and maintains
+// the main stack and the various registers.
 type Interpreter struct {
 	Stack            *Stack
 	Registers        map[rune]*Stack
 	NumberBuilder    *NumberBuilder
 	Precision        int
-	State            InterpreterState
 	CurrentOperation Operation
 	Operations       map[rune]Operation
 	output           io.Writer
 	QuitLevel        int
 }
 
+// NewInterpreter intitializes an interpreter and its
+// registers.
 func NewInterpreter() *Interpreter {
 	i := new(Interpreter)
 	i.Stack = new(Stack)
@@ -56,6 +52,7 @@ func NewInterpreter() *Interpreter {
 		'_': NumberBuilderOperation,
 		'q': QuitOperation,
 		'p': PrintOperation,
+		'P': NotImplementedOperation, // TODO: I don't really understand this one.
 		'n': PopAndPrintOperation,
 		'f': PrintStackOperation,
 		'+': AdditionOperation,
@@ -75,25 +72,25 @@ func NewInterpreter() *Interpreter {
 		'S': MoveToRegisterStackOperation,
 		'L': MoveFromRegisterStackOperation,
 		'k': SetPrecisionOperation,
-		'i': NotImplementedOperation,       // set input radix
-		'o': NotImplementedOperation,       // set output radix
-		'I': NotImplementedOperation,       // get input radix
-		'O': NotImplementedOperation,       // get output radix
+		'i': NotImplementedOperation,       // TODO: set input radix
+		'o': NotImplementedOperation,       // TODO: set output radix
+		'I': NotImplementedOperation,       // TODO: get input radix
+		'O': NotImplementedOperation,       // TODO: get output radix
 		'[': StringBuilderOperation,        // begin string
-		'a': NotImplementedOperation,       // i to a
+		'a': NotImplementedOperation,       // TODO: chr(i) (for int) or s[0] (for string)
 		'x': ExecuteMacroOperation,         // execute macro
 		'>': ExecuteMacroIfGTOperation,     // conditional execute macro
 		'!': ExecuteMacroNegativeOperation, // conditional execute macro
 		'<': ExecuteMacroIfLTOperation,     // conditional execute macro
 		'=': ExecuteMacroIfEqOperation,     // conditional execute macro
-		'?': NotImplementedOperation,       // conditional execute macro
+		'?': NotImplementedOperation,       // TODO: get input from STDIN
 		'Q': MacroQuitOperation,            // exit n macros
-		'Z': NotImplementedOperation,       // replace n with Value of digits in n
-		'X': NotImplementedOperation,       // replace n with Value of fractional digits
+		'Z': NotImplementedOperation,       // TODO: len(v.String())
+		'X': NotImplementedOperation,       // TODO: number of fractional digits.
 		'z': PushLengthOperation,
 		'#': CommentOperator,
-		':': NotImplementedOperation, // push to specific index in register
-		';': NotImplementedOperation, // fetch from specific index in register
+		':': NotImplementedOperation, // TODO: push to specific index in register
+		';': NotImplementedOperation, // TODO: fetch from specific index in register
 	}
 	return i
 }
@@ -102,14 +99,18 @@ func (i *Interpreter) print(args ...interface{}) {
 	fmt.Fprint(i.output, args...)
 }
 
-func (i *Interpreter) printf(format string, args ...interface{}) {
-	fmt.Fprintf(i.output, format, args...)
-}
-
 func (i *Interpreter) println(args ...interface{}) {
 	fmt.Fprintln(i.output, args...)
 }
 
+// Interpret interprets one rune from input or a macro.
+// The error returned might include ErrExitRequested,
+// if the command was q or Q, or if a submacro returned
+// that. The QuitLevel command sould be consulted
+// by macros to determine whether to raise that error
+// to calling macros or to continue on. Most other
+// errors are not fatal. They should be printed and
+// execution should continue.
 func (i *Interpreter) Interpret(r rune) error {
 	var (
 		op Operation
@@ -129,20 +130,24 @@ func (i *Interpreter) Interpret(r rune) error {
 	} else {
 		i.CurrentOperation = op
 	}
-	if err == ContinueProcessingRune {
+	if err == ErrContinueProcessingRune {
 		if i.CurrentOperation != nil {
-			panic(`operation returned !finished, ContinueProcessingRune`)
+			panic(`operation returned !finished, ErrContinueProcessingRune`)
 		}
 		return i.Interpret(r)
 	}
 	return err
 }
 
+// InterpretMacro runs a macro sequence. The only difference between
+// this and the main loop is that the QuitLevel number is consulted
+// to determine how many layers of macro should be terminated when
+// a q or Q command is encountered.
 func (i *Interpreter) InterpretMacro(macro []rune) error {
 	for _, r := range macro {
 		err := i.Interpret(r)
 		if err != nil {
-			if err == ExitRequestedError {
+			if err == ErrExitRequested {
 				if i.QuitLevel == 0 {
 					continue
 				}

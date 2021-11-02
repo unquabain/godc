@@ -154,20 +154,6 @@ func TestMultply(t *testing.T) {
 	}
 }
 
-func TestNormalizePrecision(t *testing.T) {
-	n := newValue(150000, 4)
-
-	n.NormalizePrecision()
-	expected := big.NewInt(15)
-	if actual := n.intval; actual.Cmp(expected) != 0 {
-		t.Fatalf(`expected value was %d; found %d`, expected, actual)
-	}
-	expectedPrec := 0
-	if actual := n.precision; actual != expectedPrec {
-		t.Fatalf(`expected precision was %d; found %d`, expected, actual)
-	}
-}
-
 func TestDivide(t *testing.T) {
 	test := func(nval int64, nprec int, mval int64, mprec int, eval int64, eprec int) {
 		n := newValue(nval, nprec)
@@ -195,7 +181,7 @@ func TestDivide(t *testing.T) {
 	if err == nil {
 		t.Fatalf(`expected divide by zero error: received none`)
 	}
-	if err != DivideByZeroError {
+	if err != ErrDivideByZero {
 		t.Fatalf(`expected divide by zero error: received %v`, err)
 	}
 }

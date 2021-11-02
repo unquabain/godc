@@ -5,25 +5,46 @@ import (
 	"math/big"
 )
 
-var NotARegisterNameError = fmt.Errorf(`not a register name`)
-var NotImplementedError = fmt.Errorf(`not implemented`)
-var ValueNotNumericError = fmt.Errorf(`value is not numeric`)
-var ValueNotStringError = fmt.Errorf(`value is not a string`)
-var ContinueProcessingRune = fmt.Errorf(`rune should be processed as new operation`)
+// ErrNotARegisterName is returned when a register operation
+// receives a rune that isn't a register name (a lowercase letter)
+var ErrNotARegisterName = fmt.Errorf(`not a register name`)
+
+// ErrNotImplemented occurs when the user tries to use an operation
+// that dc understands, but I haven't gotten to yet.
+var ErrNotImplemented = fmt.Errorf(`not implemented`)
+
+// ErrValueNotNumeric is returned when you try to do a number thing
+// with a string.
+var ErrValueNotNumeric = fmt.Errorf(`value is not numeric`)
+
+// ErrValueNotString is returned when you try to do a string thing
+// with a number.
+var ErrValueNotString = fmt.Errorf(`value is not a string`)
+
+// ErrContinueProcessingRune is returned by operations that gobble
+// up input until they encounter something they don't recognize.
+// It indicates that the operation is completed, but the rune should
+// be reprocessed to be picked up possibly by another operation.
+var ErrContinueProcessingRune = fmt.Errorf(`rune should be processed as new operation`)
 
 func ensureNumeric(vals ...*Value) error {
 	for _, val := range vals {
 		if val.Type != VTNumber {
-			return ValueNotNumericError
+			return ErrValueNotNumeric
 		}
 	}
 	return nil
 }
 
+// Operation consumes runes and manipulates stacks and registers.
 type Operation interface {
+	// Operate operates on a rune. It returns a bool indicating
+	// whether or not the Operation is expecting more input, and,
+	// of course, an error.
 	Operate(*Interpreter, rune) (bool, error)
 }
 
+// Whether the operation is expecting more runes
 type OperationState bool
 
 const (
@@ -41,11 +62,19 @@ func isRegister(r rune) bool {
 	return true
 }
 
+// An operation that takes a post-positional argument, that
+// is a register to operate on. This violates the backward-only
+// operation of most dc operations. You could implement e.g.
+// "save value 12 to register a" as 12[a]s, but dc uses 12sa.
 type RegisterOperation struct {
 	State OperationState
 	Func  func(stack, register *Stack) error
 }
 
+// Operate implements the Operator interface.
+// It returns false on its first call to indicate that it's
+// waiting for a second rune, that specifies the register to
+// operate on.
 func (so *RegisterOperation) Operate(i *Interpreter, register rune) (bool, error) {
 	if so.State == OSNotHungry {
 		so.State = OSHungry
@@ -54,14 +83,18 @@ func (so *RegisterOperation) Operate(i *Interpreter, register rune) (bool, error
 	defer func() { so.State = OSNotHungry }()
 
 	if !isRegister(register) {
-		return true, NotARegisterNameError
+		return true, ErrNotARegisterName
 	}
 
 	return true, so.Func(i.Stack, i.Registers[register])
 }
 
+// Most operations are not hungry, so the operator pattern helps
+// keep their definitions simple.
 type OperationAdapter func(*Interpreter) error
 
+// This implements the Operation interface by discarding unused arguments
+// and calling the original function.
 func (oa OperationAdapter) Operate(i *Interpreter, _ rune) (bool, error) {
 	return true, oa(i)
 }
@@ -69,7 +102,7 @@ func (oa OperationAdapter) Operate(i *Interpreter, _ rune) (bool, error) {
 func makeUnaryOperation(op func(*Value) ([]*Value, error)) Operation {
 	return OperationAdapter(func(i *Interpreter) error {
 		if i.Stack.Len() < 1 {
-			return StackTooShortError
+			return ErrStackTooShort
 		}
 		val := i.Stack.Pop()
 		nums, err := op(val)
@@ -87,7 +120,7 @@ func makeUnaryOperation(op func(*Value) ([]*Value, error)) Operation {
 func makeBinaryOperation(op func(*Value, *Value) ([]*Value, error)) Operation {
 	return OperationAdapter(func(i *Interpreter) error {
 		if i.Stack.Len() < 2 {
-			return StackTooShortError
+			return ErrStackTooShort
 		}
 		right, left := i.Stack.Pop(), i.Stack.Pop() // Note reverse order of left and right
 		nums, err := op(left, right)
@@ -103,11 +136,13 @@ func makeBinaryOperation(op func(*Value, *Value) ([]*Value, error)) Operation {
 	})
 }
 
+// QuitOperation implements the 'q' command
 var QuitOperation = OperationAdapter(func(i *Interpreter) error {
 	i.QuitLevel = 1
-	return ExitRequestedError
+	return ErrExitRequested
 })
 
+// MacroQuitOperation implements the 'Q' command
 var MacroQuitOperation = OperationAdapter(func(i *Interpreter) error {
 	i.QuitLevel = 0
 	if i.Stack.Len() > 0 {
@@ -116,9 +151,10 @@ var MacroQuitOperation = OperationAdapter(func(i *Interpreter) error {
 			i.QuitLevel = quitLevel
 		}
 	}
-	return ExitRequestedError
+	return ErrExitRequested
 })
 
+// PrintOperation implements the 'p' command.
 var PrintOperation = OperationAdapter(func(i *Interpreter) error {
 	p := i.Stack.Peek().Dup()
 	p.UpdatePrecision(i.Precision)
@@ -126,9 +162,10 @@ var PrintOperation = OperationAdapter(func(i *Interpreter) error {
 	return nil
 })
 
+// PopAndPrintOperation implements the 'n' command
 var PopAndPrintOperation = OperationAdapter(func(i *Interpreter) error {
 	if i.Stack.Len() < 1 {
-		return StackTooShortError
+		return ErrStackTooShort
 	}
 	val := i.Stack.Pop()
 	dup := val.Dup()
@@ -137,11 +174,13 @@ var PopAndPrintOperation = OperationAdapter(func(i *Interpreter) error {
 	return nil
 })
 
+// PushLengthOperation implements the 'z' command.
 var PushLengthOperation = OperationAdapter(func(i *Interpreter) error {
 	i.Stack.Push(&Value{intval: big.NewInt(int64(i.Stack.Len()))})
 	return nil
 })
 
+// PrintStackOperation implements the 'f' command.
 var PrintStackOperation = OperationAdapter(func(i *Interpreter) error {
 	for _, num := range i.Stack.values {
 		dup := num.Dup()
@@ -152,11 +191,13 @@ var PrintStackOperation = OperationAdapter(func(i *Interpreter) error {
 	return nil
 })
 
+// ClearStackOperation implements the 'c' command.
 var ClearStackOperation = OperationAdapter(func(i *Interpreter) error {
 	i.Stack.Clear()
 	return nil
 })
 
+// AdditionOperation implements the '+' command.
 var AdditionOperation = makeBinaryOperation(func(left, right *Value) ([]*Value, error) {
 	err := ensureNumeric(left, right)
 	if err != nil {
@@ -169,6 +210,7 @@ var AdditionOperation = makeBinaryOperation(func(left, right *Value) ([]*Value, 
 	return []*Value{left}, nil
 })
 
+// SubtrationOperation implements the '-' command.
 var SubtractionOperation = makeBinaryOperation(func(left, right *Value) ([]*Value, error) {
 	err := ensureNumeric(left, right)
 	if err != nil {
@@ -181,6 +223,7 @@ var SubtractionOperation = makeBinaryOperation(func(left, right *Value) ([]*Valu
 	return []*Value{left}, nil
 })
 
+// MultiplicationOperation implements the '*' command.
 var MultiplicationOperation = makeBinaryOperation(func(left, right *Value) ([]*Value, error) {
 	err := ensureNumeric(left, right)
 	if err != nil {
@@ -193,6 +236,7 @@ var MultiplicationOperation = makeBinaryOperation(func(left, right *Value) ([]*V
 	return []*Value{left}, nil
 })
 
+// DivisionOperation implements the "/" command.
 var DivisionOperation = makeBinaryOperation(func(left, right *Value) ([]*Value, error) {
 	err := ensureNumeric(left, right)
 	if err != nil {
@@ -205,6 +249,7 @@ var DivisionOperation = makeBinaryOperation(func(left, right *Value) ([]*Value, 
 	return []*Value{left}, nil
 })
 
+// ModuloOperation implements the '%' command.
 var ModuloOperation = makeBinaryOperation(func(left, right *Value) ([]*Value, error) {
 	err := ensureNumeric(left, right)
 	if err != nil {
@@ -217,6 +262,7 @@ var ModuloOperation = makeBinaryOperation(func(left, right *Value) ([]*Value, er
 	return []*Value{r}, nil
 })
 
+// QuotientRemainderOperation implements the '~' command.
 var QuotientRemainderOperation = makeBinaryOperation(func(left, right *Value) ([]*Value, error) {
 	err := ensureNumeric(left, right)
 	if err != nil {
@@ -229,6 +275,7 @@ var QuotientRemainderOperation = makeBinaryOperation(func(left, right *Value) ([
 	return []*Value{r, q}, nil
 })
 
+// ExponentOperation implements the '^' command.
 var ExponentOperation = makeBinaryOperation(func(left, right *Value) ([]*Value, error) {
 	err := ensureNumeric(left, right)
 	if err != nil {
@@ -241,9 +288,10 @@ var ExponentOperation = makeBinaryOperation(func(left, right *Value) ([]*Value, 
 	return []*Value{left}, nil
 })
 
+// ModExponentOperation implements the '|' command.
 var ModExponentOperation = OperationAdapter(func(i *Interpreter) error {
 	if i.Stack.Len() < 3 {
-		return StackTooShortError
+		return ErrStackTooShort
 	}
 	e, m, n := i.Stack.Pop(), i.Stack.Pop(), i.Stack.Pop()
 	err := n.ModExponent(m, e)
@@ -254,23 +302,27 @@ var ModExponentOperation = OperationAdapter(func(i *Interpreter) error {
 	return nil
 })
 
+// SqrtOperation implements the 'v' command.
 var SqrtOperation = makeUnaryOperation(func(val *Value) ([]*Value, error) {
 	err := val.Sqrt()
 	return []*Value{val}, err
 })
 
+// DuplicationOperation implements the 'd' command.
 var DuplicationOperation = makeUnaryOperation(func(val *Value) ([]*Value, error) {
 	return []*Value{val, val.Dup()}, nil
 })
 
+// ReverseOperation implements the 'r' command.
 var ReverseOperation = makeBinaryOperation(func(left, right *Value) ([]*Value, error) {
 	return []*Value{right, left}, nil
 })
 
+// MoveToRegisterOperation implements the 's' (save) command.
 var MoveToRegisterOperation = &RegisterOperation{
 	Func: func(stack, register *Stack) error {
 		if stack.Len() < 1 {
-			return StackTooShortError
+			return ErrStackTooShort
 		}
 		register.Clear()
 		register.Push(stack.Pop())
@@ -278,39 +330,43 @@ var MoveToRegisterOperation = &RegisterOperation{
 	},
 }
 
+// MoveFromRegister implements the 'l' (load) command.
 var MoveFromRegisterOperation = &RegisterOperation{
 	Func: func(stack, register *Stack) error {
 		if register.Len() < 1 {
-			return StackTooShortError
+			return ErrStackTooShort
 		}
 		stack.Push(register.Peek())
 		return nil
 	},
 }
 
+// MoveToRegisterStackOperation implements the 'S' command.
 var MoveToRegisterStackOperation = &RegisterOperation{
 	Func: func(stack, register *Stack) error {
 		if stack.Len() < 1 {
-			return StackTooShortError
+			return ErrStackTooShort
 		}
 		register.Push(stack.Pop())
 		return nil
 	},
 }
 
+// MoveFromRegisterStackOperation implements the 'L' command.
 var MoveFromRegisterStackOperation = &RegisterOperation{
 	Func: func(stack, register *Stack) error {
 		if register.Len() < 1 {
-			return StackTooShortError
+			return ErrStackTooShort
 		}
 		stack.Push(register.Pop())
 		return nil
 	},
 }
 
+// SetPrecisionOperation implements the 'k' command.
 var SetPrecisionOperation = OperationAdapter(func(i *Interpreter) error {
 	if i.Stack.Len() < 1 {
-		return StackTooShortError
+		return ErrStackTooShort
 	}
 	p := i.Stack.Pop()
 	err := ensureNumeric(p)
@@ -321,28 +377,38 @@ var SetPrecisionOperation = OperationAdapter(func(i *Interpreter) error {
 	return nil
 })
 
+// GetPrecisionOperation implements the 'K' command.
 var GetPrecisionOperation = OperationAdapter(func(i *Interpreter) error {
 	i.Stack.Push(&Value{intval: big.NewInt(int64(i.Precision))})
 	return nil
 })
 
+// NotImplementedOperation returns an error, and is a placeholder for any
+// commands dc supports, but I don't yet support.
 var NotImplementedOperation = OperationAdapter(func(_ *Interpreter) error {
-	return NotImplementedError
+	return ErrNotImplemented
 })
 
+// CommentOperatorType is an OperatorType that ignores everything up to a newline.
 type CommentOperatorType struct{}
 
+// Operate implements the Operator interface.
 func (CommentOperatorType) Operate(_ *Interpreter, r rune) (bool, error) {
 	return r == '\n', nil
 }
 
+// CommentOperator implements the '#' command.
 var CommentOperator CommentOperatorType
 
+// StringBuilder facilitates interpreting brace-delimited strings.
+// It gobbles up runes until it spots a ']'
 type StringBuilder struct {
 	OperationState
 	Value
 }
 
+// Operate implements the Operator interface.
+// TODO: dc supports nested brackets in strings.
 func (sb *StringBuilder) Operate(i *Interpreter, r rune) (bool, error) {
 	if r == '[' {
 		sb.OperationState = OSHungry
@@ -362,12 +428,16 @@ func (sb *StringBuilder) Operate(i *Interpreter, r rune) (bool, error) {
 	return false, nil
 }
 
+// StringBuilderOperation implements the '[' command.
 var StringBuilderOperation = new(StringBuilder)
+
+// NumberBuilderOperation gobbles up digits and builds a number.
 var NumberBuilderOperation = NewNumberBuilder()
 
+// ExecuteMacroOperation implements the 'x' command.
 var ExecuteMacroOperation = OperationAdapter(func(i *Interpreter) error {
 	if i.Stack.Len() < 1 {
-		return StackTooShortError
+		return ErrStackTooShort
 	}
 	val := i.Stack.Pop()
 	if val.Type != VTString {
@@ -377,11 +447,19 @@ var ExecuteMacroOperation = OperationAdapter(func(i *Interpreter) error {
 	return i.InterpretMacro(val.strval)
 })
 
+// MacroOperation supports execution of conditional macros.
+// Positive conditional macros (e.g. >) are supported directly, and
+// negative conditional macros (e.g. !>) are supported with the aid
+// of the NegativeMacroOperation type.
 type MacroOperation struct {
-	State     OperationState
+	State OperationState
+	// Whether the previous two values in the stack indicate the macro
+	// should be executed. Values are (top, next-to-top)
 	Predicate func(*Value, *Value) bool
 }
 
+// Operate implements the Operation interface.
+// This handles the stack and argument type checking.
 func (so *MacroOperation) Operate(i *Interpreter, register rune) (bool, error) {
 	if so.State == OSNotHungry {
 		so.State = OSHungry
@@ -390,24 +468,24 @@ func (so *MacroOperation) Operate(i *Interpreter, register rune) (bool, error) {
 	defer func() { so.State = OSNotHungry }()
 
 	if !isRegister(register) {
-		return true, NotARegisterNameError
+		return true, ErrNotARegisterName
 	}
 
 	if i.Stack.Len() < 2 {
-		return true, StackTooShortError
+		return true, ErrStackTooShort
 	}
 
 	reg := i.Registers[register]
 	if reg.Len() < 1 {
-		return true, StackTooShortError
+		return true, ErrStackTooShort
 	}
 	if reg.Peek().Type != VTString {
-		return true, ValueNotStringError
+		return true, ErrValueNotString
 	}
 
 	left, right := i.Stack.Pop(), i.Stack.Pop()
 	if left.Type != VTNumber || right.Type != VTNumber {
-		return true, ValueNotNumericError
+		return true, ErrValueNotNumeric
 	}
 
 	if !so.Predicate(left, right) {
@@ -419,6 +497,7 @@ func (so *MacroOperation) Operate(i *Interpreter, register rune) (bool, error) {
 	return true, i.InterpretMacro(macro)
 }
 
+// ExecuteMacroIfGTOperation implements the '>' command.
 var ExecuteMacroIfGTOperation = &MacroOperation{
 	Predicate: func(left, right *Value) bool {
 		left.MatchPrecision(right)
@@ -426,6 +505,7 @@ var ExecuteMacroIfGTOperation = &MacroOperation{
 	},
 }
 
+// ExecuteMacroIfLTOperation implements the '<' command.
 var ExecuteMacroIfLTOperation = &MacroOperation{
 	Predicate: func(left, right *Value) bool {
 		left.MatchPrecision(right)
@@ -433,6 +513,7 @@ var ExecuteMacroIfLTOperation = &MacroOperation{
 	},
 }
 
+// ExecuteMacroIfEqOperation implements the '=' command.
 var ExecuteMacroIfEqOperation = &MacroOperation{
 	Predicate: func(left, right *Value) bool {
 		left.MatchPrecision(right)
@@ -440,6 +521,9 @@ var ExecuteMacroIfEqOperation = &MacroOperation{
 	},
 }
 
+// NegativeMacroOperation implements the negative conditional
+// macro commands by gobbling up the '!' and negating the
+// predicate.
 type NegativeMacroOperation struct {
 	Op    *MacroOperation
 	State OperationState
@@ -451,6 +535,14 @@ func negate(pred func(*Value, *Value) bool) func(*Value, *Value) bool {
 	}
 }
 
+// Operate implements the Operator interface.
+// This determines which of the MacroOperation type Operations
+// defined above are to be negated, creates a negative predicate,
+// then proxies that MacroOperation.
+//
+// TODO: Since this operator will handle the '!' command, which has
+// a second meaning, it must also handle the shell execute meaning
+// of '!'
 func (so *NegativeMacroOperation) Operate(i *Interpreter, r rune) (bool, error) {
 	if so.State == OSNotHungry {
 		so.State = OSHungry
@@ -466,7 +558,8 @@ func (so *NegativeMacroOperation) Operate(i *Interpreter, r rune) (bool, error) 
 		case '=':
 			so.Op.Predicate = negate(ExecuteMacroIfEqOperation.Predicate)
 		default:
-			return false, fmt.Errorf(`unrecognized macro conditional %q`, r)
+			// TODO: read to newline and execute in subshell
+			return false, ErrNotImplemented
 		}
 	}
 	finished, err := so.Op.Operate(i, r)
@@ -479,4 +572,5 @@ func (so *NegativeMacroOperation) Operate(i *Interpreter, r rune) (bool, error) 
 	return finished, err
 }
 
+// This implements all multi-rune commands beginning with '!'
 var ExecuteMacroNegativeOperation = new(NegativeMacroOperation)

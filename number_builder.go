@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+// NumberBuilder handles creating a Value from a stream of
+// digits.
 type NumberBuilder struct {
 	buff    *strings.Builder
 	sign    bool
@@ -29,20 +31,21 @@ func isDigit(r rune) bool {
 	return true
 }
 
+// Operate implements the Operator interface
 func (n *NumberBuilder) Operate(i *Interpreter, r rune) (bool, error) {
 	if !isDigit(r) {
 		err := n.Flush(i)
 		if err != nil {
 			return true, err
 		}
-		return true, ContinueProcessingRune
+		return true, ErrContinueProcessingRune
 	}
 	if n.State == OSHungry && r == '_' {
 		err := n.Flush(i)
 		if err != nil {
 			return true, err
 		}
-		return true, ContinueProcessingRune
+		return true, ErrContinueProcessingRune
 	}
 	n.State = OSHungry
 	if r == '_' {
@@ -55,7 +58,7 @@ func (n *NumberBuilder) Operate(i *Interpreter, r rune) (bool, error) {
 			if err != nil {
 				return true, err
 			}
-			return true, ContinueProcessingRune
+			return true, ErrContinueProcessingRune
 		}
 		n.dotSeen = true
 	}
@@ -63,12 +66,14 @@ func (n *NumberBuilder) Operate(i *Interpreter, r rune) (bool, error) {
 	return false, nil
 }
 
+// NewNumberBuilder initializes internal structures in a NumberBuilder
 func NewNumberBuilder() *NumberBuilder {
 	return &NumberBuilder{
 		buff: new(strings.Builder),
 	}
 }
 
+// Flush finalizes the number and pushes it onto the stack.
 func (n *NumberBuilder) Flush(i *Interpreter) error {
 	var v Value
 	num := big.NewInt(0)

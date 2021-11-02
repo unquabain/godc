@@ -10,7 +10,7 @@ func testWithInterpreter(interpreter *Interpreter, str string) error {
 	interpreter.Interpret('c')
 	for i, r := range []rune(str) {
 		if err := interpreter.Interpret(r); err != nil {
-			if err == ExitRequestedError {
+			if err == ErrExitRequested {
 				return nil
 			}
 			return fmt.Errorf(`couldn't interpret %q, character %d of %q: %w`, r, i, str, err)
