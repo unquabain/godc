@@ -75,21 +75,21 @@ func NewInterpreter() *Interpreter {
 		'S': MoveToRegisterStackOperation,
 		'L': MoveFromRegisterStackOperation,
 		'k': SetPrecisionOperation,
-		'i': NotImplementedOperation, // set input radix
-		'o': NotImplementedOperation, // set output radix
-		'I': NotImplementedOperation, // get input radix
-		'O': NotImplementedOperation, // get output radix
-		'[': StringBuilderOperation,  // begin string
-		'a': NotImplementedOperation, // i to a
-		'x': ExecuteMacroOperation,   // execute macro
-		'>': NotImplementedOperation, // conditional execute macro
-		'!': NotImplementedOperation, // conditional execute macro
-		'<': NotImplementedOperation, // conditional execute macro
-		'=': NotImplementedOperation, // conditional execute macro
-		'?': NotImplementedOperation, // conditional execute macro
-		'Q': MacroQuitOperation,      // exit n macros
-		'Z': NotImplementedOperation, // replace n with Value of digits in n
-		'X': NotImplementedOperation, // replace n with Value of fractional digits
+		'i': NotImplementedOperation,   // set input radix
+		'o': NotImplementedOperation,   // set output radix
+		'I': NotImplementedOperation,   // get input radix
+		'O': NotImplementedOperation,   // get output radix
+		'[': StringBuilderOperation,    // begin string
+		'a': NotImplementedOperation,   // i to a
+		'x': ExecuteMacroOperation,     // execute macro
+		'>': ExecuteMacroIfGTOperation, // conditional execute macro
+		'!': NotImplementedOperation,   // conditional execute macro
+		'<': ExecuteMacroIfLTOperation, // conditional execute macro
+		'=': ExecuteMacroIfEqOperation, // conditional execute macro
+		'?': NotImplementedOperation,   // conditional execute macro
+		'Q': MacroQuitOperation,        // exit n macros
+		'Z': NotImplementedOperation,   // replace n with Value of digits in n
+		'X': NotImplementedOperation,   // replace n with Value of fractional digits
 		'z': PushLengthOperation,
 		'#': CommentOperator,
 		':': NotImplementedOperation, // push to specific index in register
@@ -136,4 +136,21 @@ func (i *Interpreter) Interpret(r rune) error {
 		return i.Interpret(r)
 	}
 	return err
+}
+
+func (i *Interpreter) InterpretMacro(macro []rune) error {
+	for _, r := range macro {
+		err := i.Interpret(r)
+		if err != nil {
+			if err == ExitRequestedError {
+				if i.QuitLevel == 0 {
+					continue
+				}
+				i.QuitLevel--
+			}
+			return err
+		}
+	}
+	i.Interpret(' ') // Make sure to flush any digit in the works
+	return nil
 }

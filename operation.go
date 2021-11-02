@@ -8,6 +8,7 @@ import (
 var NotARegisterNameError = fmt.Errorf(`not a register name`)
 var NotImplementedError = fmt.Errorf(`not implemented`)
 var ValueNotNumericError = fmt.Errorf(`value is not numeric`)
+var ValueNotStringError = fmt.Errorf(`value is not a string`)
 var ContinueProcessingRune = fmt.Errorf(`rune should be processed as new operation`)
 
 func ensureNumeric(vals ...*Value) error {
@@ -30,11 +31,6 @@ const (
 	OSHungry    OperationState = true
 )
 
-type RegisterOperation struct {
-	State OperationState
-	Func  func(stack, register *Stack) error
-}
-
 func isRegister(r rune) bool {
 	if r < 'a' {
 		return false
@@ -43,6 +39,11 @@ func isRegister(r rune) bool {
 		return false
 	}
 	return true
+}
+
+type RegisterOperation struct {
+	State OperationState
+	Func  func(stack, register *Stack) error
 }
 
 func (so *RegisterOperation) Operate(i *Interpreter, register rune) (bool, error) {
@@ -373,19 +374,68 @@ var ExecuteMacroOperation = OperationAdapter(func(i *Interpreter) error {
 		i.Stack.Push(val)
 		return nil
 	}
-
-	for _, r := range val.strval {
-		err := i.Interpret(r)
-		if err != nil {
-			if err == ExitRequestedError {
-				if i.QuitLevel == 0 {
-					continue
-				}
-				i.QuitLevel--
-			}
-			return err
-		}
-	}
-	i.Interpret(' ') // Make sure to flush any digit in the works
-	return nil
+	return i.InterpretMacro(val.strval)
 })
+
+type MacroOperation struct {
+	State     OperationState
+	Predicate func(*Value, *Value) bool
+}
+
+func (so *MacroOperation) Operate(i *Interpreter, register rune) (bool, error) {
+	if so.State == OSNotHungry {
+		so.State = OSHungry
+		return false, nil
+	}
+	defer func() { so.State = OSNotHungry }()
+
+	if !isRegister(register) {
+		return true, NotARegisterNameError
+	}
+
+	if i.Stack.Len() < 2 {
+		return true, StackTooShortError
+	}
+
+	reg := i.Registers[register]
+	if reg.Len() < 1 {
+		return true, StackTooShortError
+	}
+	if reg.Peek().Type != VTString {
+		return true, ValueNotStringError
+	}
+
+	macro := reg.Pop().strval
+	left, right := i.Stack.Pop(), i.Stack.Pop()
+	if left.Type != VTNumber || right.Type != VTNumber {
+		return true, ValueNotNumericError
+	}
+
+	if !so.Predicate(left, right) {
+		return true, nil
+	}
+
+	i.CurrentOperation = nil
+	return true, i.InterpretMacro(macro)
+}
+
+var ExecuteMacroIfGTOperation = &MacroOperation{
+	Predicate: func(left, right *Value) bool {
+		left.MatchPrecision(right)
+		return left.intval.Cmp(right.intval) > 0
+	},
+}
+
+var ExecuteMacroIfLTOperation = &MacroOperation{
+	Predicate: func(left, right *Value) bool {
+		left.MatchPrecision(right)
+		return left.intval.Cmp(right.intval) < 0
+	},
+}
+
+var ExecuteMacroIfEqOperation = &MacroOperation{
+	Predicate: func(left, right *Value) bool {
+		left.MatchPrecision(right)
+		return left.intval.Cmp(right.intval) == 0
+	},
+}

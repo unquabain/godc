@@ -265,4 +265,33 @@ func TestMacroOperations(t *testing.T) {
 		expect(`5`, `4`, `3`)
 	})
 
+	t.Run(`run macro if gt`, func(t *testing.T) {
+		test(`[50]sa0 1>a`)
+		expect(`50`)
+	})
+
+	t.Run(`skip macro if not gt`, func(t *testing.T) {
+		test(`[nope][50]sa1 0>a`)
+		expect(`nope`)
+	})
+
+	t.Run(`run macro if lt`, func(t *testing.T) {
+		test(`[50]sa1 0<a`)
+		expect(`50`)
+	})
+
+	t.Run(`skip macro if not lt`, func(t *testing.T) {
+		test(`[nope][50]sa0 1<a`)
+		expect(`nope`)
+	})
+
+	t.Run(`run macro if eq`, func(t *testing.T) {
+		test(`[50]sa1 1=a`)
+		expect(`50`)
+	})
+
+	t.Run(`skip macro if not eq`, func(t *testing.T) {
+		test(`[nope][50]sa0 1=a`)
+		expect(`nope`)
+	})
 }
