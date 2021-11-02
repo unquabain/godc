@@ -9,6 +9,9 @@ import (
 func testWithInterpreter(interpreter *Interpreter, str string) error {
 	for i, r := range []rune(str) {
 		if err := interpreter.Interpret(r); err != nil {
+			if err == ExitRequestedError {
+				return nil
+			}
 			return fmt.Errorf(`couldn't interpret %q, character %d of %q: %w`, r, i, str, err)
 		}
 	}
@@ -226,4 +229,40 @@ func TestRegisterOperations(t *testing.T) {
 		test(`[test A]sx[test B]sy[B]ly[A]lx`)
 		expect(`test A`, `A`, `test B`, `B`)
 	})
+}
+
+func TestMacroOperations(t *testing.T) {
+	interpreter := NewInterpreter()
+	buff := new(strings.Builder)
+	interpreter.output = buff
+	test := func(str string) {
+		err := testWithInterpreter(interpreter, str)
+		if err != nil {
+			t.Fatalf(`could not set up test %q: %v`, str, err)
+		}
+	}
+
+	expect := func(values ...string) {
+		err := expectWithInterpreter(buff, values...)
+		if err != nil {
+			t.Fatalf(`test failed: %v`, err)
+		}
+		interpreter.Interpret('c')
+	}
+
+	t.Run(`basic math in a macro`, func(t *testing.T) {
+		test(`[15 3/]x`)
+		expect(`5`)
+	})
+
+	t.Run(`test 1-level exit`, func(t *testing.T) {
+		test(`[15 3/pq10*p]x`)
+		expect(`5`)
+	})
+
+	t.Run(`test multi-level exit`, func(t *testing.T) {
+		test(`[3Q][x1][x2][x3][x4][x5]x`)
+		expect(`5`, `4`, `3`)
+	})
+
 }

@@ -5,6 +5,7 @@ import (
 	"math/big"
 )
 
+var NotANumberError = fmt.Errorf(`value is not a number`)
 var DivideByZeroError = fmt.Errorf(`divide by zero`)
 var NoImaginaryNumbersError = fmt.Errorf(`no imaginary numbers allowed`)
 
@@ -94,24 +95,36 @@ func (n *Value) Dup() *Value {
 }
 
 func (n *Value) Add(m *Value) error {
+	if n.Type != VTNumber {
+		return NotANumberError
+	}
 	n.MatchPrecision(m)
 	n.intval.Add(n.intval, m.intval)
 	return nil
 }
 
 func (n *Value) Subtract(m *Value) error {
+	if n.Type != VTNumber {
+		return NotANumberError
+	}
 	n.MatchPrecision(m)
 	n.intval.Sub(n.intval, m.intval)
 	return nil
 }
 
 func (n *Value) Multiply(m *Value) error {
+	if n.Type != VTNumber {
+		return NotANumberError
+	}
 	n.precision += m.precision
 	n.intval.Mul(n.intval, m.intval)
 	return nil
 }
 
 func (n *Value) Divide(m *Value) error {
+	if n.Type != VTNumber {
+		return NotANumberError
+	}
 	if m.intval.Sign() == 0 {
 		return DivideByZeroError
 	}
@@ -138,6 +151,9 @@ func (n *Value) NormalizePrecision() {
 }
 
 func (n *Value) IntVal() error {
+	if n.Type != VTNumber {
+		return NotANumberError
+	}
 	n.UpdatePrecision(0)
 	return nil
 }
@@ -148,6 +164,9 @@ func (n *Value) Int() int {
 }
 
 func (n *Value) FracVal() error {
+	if n.Type != VTNumber {
+		return NotANumberError
+	}
 	d := n.Dup()
 	if err := d.IntVal(); err != nil {
 		return err
@@ -156,6 +175,9 @@ func (n *Value) FracVal() error {
 }
 
 func (n *Value) QuotientRemainder(m *Value) (*Value, *Value, error) {
+	if n.Type != VTNumber {
+		return nil, nil, NotANumberError
+	}
 	if m.intval.Sign() == 0 {
 		return nil, nil, DivideByZeroError
 	}
@@ -165,6 +187,9 @@ func (n *Value) QuotientRemainder(m *Value) (*Value, *Value, error) {
 }
 
 func (n *Value) Exponent(m *Value) error {
+	if n.Type != VTNumber {
+		return NotANumberError
+	}
 	m.UpdatePrecision(0)
 	n.intval.Exp(n.intval, m.intval, nil)
 	afterPower := n.precision * (m.Int() - 1)
@@ -174,6 +199,9 @@ func (n *Value) Exponent(m *Value) error {
 }
 
 func (n *Value) ModExponent(e, m *Value) error {
+	if n.Type != VTNumber {
+		return NotANumberError
+	}
 	n.UpdatePrecision(0)
 	e.UpdatePrecision(0)
 	m.UpdatePrecision(0)
@@ -182,6 +210,9 @@ func (n *Value) ModExponent(e, m *Value) error {
 }
 
 func (n *Value) Sqrt() error {
+	if n.Type != VTNumber {
+		return NotANumberError
+	}
 	if n.intval.Sign() < 0 {
 		return NoImaginaryNumbersError
 	}

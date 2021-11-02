@@ -102,7 +102,19 @@ func makeBinaryOperation(op func(*Value, *Value) ([]*Value, error)) Operation {
 	})
 }
 
-var QuitOperation = OperationAdapter(func(_ *Interpreter) error {
+var QuitOperation = OperationAdapter(func(i *Interpreter) error {
+	i.QuitLevel = 1
+	return ExitRequestedError
+})
+
+var MacroQuitOperation = OperationAdapter(func(i *Interpreter) error {
+	i.QuitLevel = 0
+	if i.Stack.Len() > 0 {
+		if i.Stack.Peek().Type == VTNumber {
+			quitLevel := i.Stack.Pop().Int()
+			i.QuitLevel = quitLevel
+		}
+	}
 	return ExitRequestedError
 })
 
@@ -351,3 +363,29 @@ func (sb *StringBuilder) Operate(i *Interpreter, r rune) (bool, error) {
 
 var StringBuilderOperation = new(StringBuilder)
 var NumberBuilderOperation = NewNumberBuilder()
+
+var ExecuteMacroOperation = OperationAdapter(func(i *Interpreter) error {
+	if i.Stack.Len() < 1 {
+		return StackTooShortError
+	}
+	val := i.Stack.Pop()
+	if val.Type != VTString {
+		i.Stack.Push(val)
+		return nil
+	}
+
+	for _, r := range val.strval {
+		err := i.Interpret(r)
+		if err != nil {
+			if err == ExitRequestedError {
+				if i.QuitLevel == 0 {
+					continue
+				}
+				i.QuitLevel--
+			}
+			return err
+		}
+	}
+	i.Interpret(' ') // Make sure to flush any digit in the works
+	return nil
+})

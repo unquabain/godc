@@ -30,6 +30,7 @@ type Interpreter struct {
 	CurrentOperation Operation
 	Operations       map[rune]Operation
 	output           io.Writer
+	QuitLevel        int
 }
 
 func NewInterpreter() *Interpreter {
@@ -79,15 +80,14 @@ func NewInterpreter() *Interpreter {
 		'I': NotImplementedOperation, // get input radix
 		'O': NotImplementedOperation, // get output radix
 		'[': StringBuilderOperation,  // begin string
-		']': NotImplementedOperation, // end string
 		'a': NotImplementedOperation, // i to a
-		'x': NotImplementedOperation, // execute macro
+		'x': ExecuteMacroOperation,   // execute macro
 		'>': NotImplementedOperation, // conditional execute macro
 		'!': NotImplementedOperation, // conditional execute macro
 		'<': NotImplementedOperation, // conditional execute macro
 		'=': NotImplementedOperation, // conditional execute macro
 		'?': NotImplementedOperation, // conditional execute macro
-		'Q': NotImplementedOperation, // exit n macros
+		'Q': MacroQuitOperation,      // exit n macros
 		'Z': NotImplementedOperation, // replace n with Value of digits in n
 		'X': NotImplementedOperation, // replace n with Value of fractional digits
 		'z': PushLengthOperation,
