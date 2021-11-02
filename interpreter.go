@@ -75,21 +75,21 @@ func NewInterpreter() *Interpreter {
 		'S': MoveToRegisterStackOperation,
 		'L': MoveFromRegisterStackOperation,
 		'k': SetPrecisionOperation,
-		'i': NotImplementedOperation,   // set input radix
-		'o': NotImplementedOperation,   // set output radix
-		'I': NotImplementedOperation,   // get input radix
-		'O': NotImplementedOperation,   // get output radix
-		'[': StringBuilderOperation,    // begin string
-		'a': NotImplementedOperation,   // i to a
-		'x': ExecuteMacroOperation,     // execute macro
-		'>': ExecuteMacroIfGTOperation, // conditional execute macro
-		'!': NotImplementedOperation,   // conditional execute macro
-		'<': ExecuteMacroIfLTOperation, // conditional execute macro
-		'=': ExecuteMacroIfEqOperation, // conditional execute macro
-		'?': NotImplementedOperation,   // conditional execute macro
-		'Q': MacroQuitOperation,        // exit n macros
-		'Z': NotImplementedOperation,   // replace n with Value of digits in n
-		'X': NotImplementedOperation,   // replace n with Value of fractional digits
+		'i': NotImplementedOperation,       // set input radix
+		'o': NotImplementedOperation,       // set output radix
+		'I': NotImplementedOperation,       // get input radix
+		'O': NotImplementedOperation,       // get output radix
+		'[': StringBuilderOperation,        // begin string
+		'a': NotImplementedOperation,       // i to a
+		'x': ExecuteMacroOperation,         // execute macro
+		'>': ExecuteMacroIfGTOperation,     // conditional execute macro
+		'!': ExecuteMacroNegativeOperation, // conditional execute macro
+		'<': ExecuteMacroIfLTOperation,     // conditional execute macro
+		'=': ExecuteMacroIfEqOperation,     // conditional execute macro
+		'?': NotImplementedOperation,       // conditional execute macro
+		'Q': MacroQuitOperation,            // exit n macros
+		'Z': NotImplementedOperation,       // replace n with Value of digits in n
+		'X': NotImplementedOperation,       // replace n with Value of fractional digits
 		'z': PushLengthOperation,
 		'#': CommentOperator,
 		':': NotImplementedOperation, // push to specific index in register

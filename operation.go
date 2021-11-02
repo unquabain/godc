@@ -405,7 +405,6 @@ func (so *MacroOperation) Operate(i *Interpreter, register rune) (bool, error) {
 		return true, ValueNotStringError
 	}
 
-	macro := reg.Pop().strval
 	left, right := i.Stack.Pop(), i.Stack.Pop()
 	if left.Type != VTNumber || right.Type != VTNumber {
 		return true, ValueNotNumericError
@@ -415,6 +414,7 @@ func (so *MacroOperation) Operate(i *Interpreter, register rune) (bool, error) {
 		return true, nil
 	}
 
+	macro := reg.Pop().strval
 	i.CurrentOperation = nil
 	return true, i.InterpretMacro(macro)
 }
@@ -439,3 +439,44 @@ var ExecuteMacroIfEqOperation = &MacroOperation{
 		return left.intval.Cmp(right.intval) == 0
 	},
 }
+
+type NegativeMacroOperation struct {
+	Op    *MacroOperation
+	State OperationState
+}
+
+func negate(pred func(*Value, *Value) bool) func(*Value, *Value) bool {
+	return func(left, right *Value) bool {
+		return !pred(left, right)
+	}
+}
+
+func (so *NegativeMacroOperation) Operate(i *Interpreter, r rune) (bool, error) {
+	if so.State == OSNotHungry {
+		so.State = OSHungry
+		return false, nil
+	}
+	if so.Op == nil {
+		so.Op = &MacroOperation{}
+		switch r {
+		case '<':
+			so.Op.Predicate = negate(ExecuteMacroIfLTOperation.Predicate)
+		case '>':
+			so.Op.Predicate = negate(ExecuteMacroIfGTOperation.Predicate)
+		case '=':
+			so.Op.Predicate = negate(ExecuteMacroIfEqOperation.Predicate)
+		default:
+			return false, fmt.Errorf(`unrecognized macro conditional %q`, r)
+		}
+	}
+	finished, err := so.Op.Operate(i, r)
+	if finished {
+		so.State = OSNotHungry
+		so.Op = nil
+	} else {
+		so.State = OSHungry
+	}
+	return finished, err
+}
+
+var ExecuteMacroNegativeOperation = new(NegativeMacroOperation)

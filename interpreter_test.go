@@ -7,6 +7,7 @@ import (
 )
 
 func testWithInterpreter(interpreter *Interpreter, str string) error {
+	interpreter.Interpret('c')
 	for i, r := range []rune(str) {
 		if err := interpreter.Interpret(r); err != nil {
 			if err == ExitRequestedError {
@@ -292,6 +293,56 @@ func TestMacroOperations(t *testing.T) {
 
 	t.Run(`skip macro if not eq`, func(t *testing.T) {
 		test(`[nope][50]sa0 1=a`)
+		expect(`nope`)
+	})
+}
+
+func TestNegativeMacroOperations(t *testing.T) {
+	interpreter := NewInterpreter()
+	buff := new(strings.Builder)
+	interpreter.output = buff
+	test := func(str string) {
+		err := testWithInterpreter(interpreter, str)
+		if err != nil {
+			t.Fatalf(`could not set up test %q: %v`, str, err)
+		}
+	}
+
+	expect := func(values ...string) {
+		err := expectWithInterpreter(buff, values...)
+		if err != nil {
+			t.Fatalf(`test failed: %v`, err)
+		}
+		interpreter.Interpret('c')
+	}
+
+	t.Run(`run macro if not gt`, func(t *testing.T) {
+		test(`[25 2*]sa1 0!>a`)
+		expect(`50`)
+	})
+
+	t.Run(`skip macro if not not gt`, func(t *testing.T) {
+		test(`[nope][25 2*1+]sa0 1!>a`)
+		expect(`nope`)
+	})
+
+	t.Run(`run macro if not lt`, func(t *testing.T) {
+		test(`[25 2*2+]sa0 1!<a`)
+		expect(`52`)
+	})
+
+	t.Run(`skip macro if not not lt`, func(t *testing.T) {
+		test(`[nope][25 2*3+]sa1 0!<a`)
+		expect(`nope`)
+	})
+
+	t.Run(`run macro if not eq`, func(t *testing.T) {
+		test(`[25 2*4+]sa1 0!=a`)
+		expect(`54`)
+	})
+
+	t.Run(`skip macro if not not eq`, func(t *testing.T) {
+		test(`[nope][25 2*5+]sa1 1!=a`)
 		expect(`nope`)
 	})
 }
