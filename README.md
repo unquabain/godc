@@ -3,7 +3,7 @@
 This is an attempt to re-implement the classic Unix program `dc`, the "Desk Calculator."
 
 This was an exercise in becoming more familar with Go. It was
-reimplemented from scratch to the spec of the `dc(1)` man page, not translated from the original source.
+implemented from scratch to the spec of the `dc(1)` man page, not translated from the original source.
 
 ## Description
 
@@ -42,11 +42,13 @@ It won't automatically print the results of your calculation unless you ask it t
 2 3+p<ENTER>
 ```
 
-Enter `2`. Enter a space, so it won't interpret it as 23. The `+` performs the operation, and the `p` shows the result.
+Enter `2`. Enter a space, so it won't interpret it as 23. Enter `3`. The `+` performs the operation, and the `p` shows the result.
+
+`godc` is line-buffered, so press the `<ENTER>` key to commit your line and execute the commands.
 
 #### Order of operations: 2 + 3 * 5
 
-This is like one of those problems you see on Facebook, where peopel argue about the answer. "It's 25!" "No, it's 17!"
+This is like one of those problems you see on Facebook, where people argue about the answer. "It's 25!" "No, it's 17!"
 It's not a problem for `godc`
 
 ```
@@ -79,7 +81,7 @@ and now you're stuck, because you forgot to put the `15` in first? Not a problem
 2 3+15r/p
 ```
 
-The `r` operator swaps the two items on the stack.
+The `r` operator swaps the top two items on the stack.
 
 #### Add up all the numbers between 1 and 25
 
@@ -135,7 +137,6 @@ For other commands, see the `dc(1)` man page.
 
 The following `dc` commands are not yet implemented:
 
-- `P` I don't really understand this one.
 - `a` Converts a number to a character, like chr(i)
 - `?` Gets input from STDIN, so you can write console programs.
 - `Z` Pushes the length of the top value onto the stack (digits or string length)

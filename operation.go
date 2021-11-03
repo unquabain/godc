@@ -162,6 +162,25 @@ var PrintOperation = OperationAdapter(func(i *Interpreter) error {
 	return nil
 })
 
+// PrintOperation implements the 'P' command.
+var PrintRawOperation = OperationAdapter(func(i *Interpreter) error {
+	if i.Stack.Len() < 1 {
+		return ErrStackTooShort
+	}
+	val := i.Stack.Pop()
+	if val.Type == VTString {
+		i.print(val)
+		return nil
+	}
+	val.UpdatePrecision(0)
+	biVal := val.intval
+	biVal.Abs(biVal)
+	for _, b := range biVal.Bytes() {
+		i.printf(`%c`, b)
+	}
+	return nil
+})
+
 // PopAndPrintOperation implements the 'n' command
 var PopAndPrintOperation = OperationAdapter(func(i *Interpreter) error {
 	if i.Stack.Len() < 1 {

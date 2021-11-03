@@ -443,3 +443,40 @@ func TestRadixOperations(t *testing.T) {
 		expect(`14`)
 	})
 }
+
+func TestPrintOperations(t *testing.T) {
+	interpreter := NewInterpreter()
+	buff := new(strings.Builder)
+	interpreter.output = buff
+	test := func(str string) {
+		interpreter.InputRadix = 10
+		interpreter.OutputRadix = 10
+		err := testWithInterpreter(interpreter, str)
+		if err != nil {
+			t.Fatalf(`could not set up test %q: %v`, str, err)
+		}
+	}
+
+	expect := func(values ...string) {
+		err := expectWithInterpreter(buff, values...)
+		if err != nil {
+			t.Fatalf(`test failed: %v`, err)
+		}
+		interpreter.Interpret('c')
+	}
+
+	t.Run(`test raw printing a string`, func(t *testing.T) {
+		test(`[a string]P`)
+		expect(`a string`)
+	})
+
+	t.Run(`test raw printing a number`, func(t *testing.T) {
+		test(`310400273487P`)
+		expect(`HELLO`)
+	})
+
+	t.Run(`test raw printing a number with extra info`, func(t *testing.T) {
+		test(`4k_310400273487.1234P`)
+		expect(`HELLO`)
+	})
+}

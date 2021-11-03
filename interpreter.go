@@ -64,7 +64,7 @@ func NewInterpreter() *Interpreter {
 		'_': NumberBuilderOperation,
 		'q': QuitOperation,
 		'p': PrintOperation,
-		'P': NotImplementedOperation, // TODO: I don't really understand this one.
+		'P': PrintRawOperation, // Prints the raw bytes in the number representation
 		'n': PopAndPrintOperation,
 		'f': PrintStackOperation,
 		'+': AdditionOperation,
@@ -109,6 +109,10 @@ func NewInterpreter() *Interpreter {
 
 func (i *Interpreter) print(args ...interface{}) {
 	fmt.Fprint(i.output, args...)
+}
+
+func (i *Interpreter) printf(format string, args ...interface{}) {
+	fmt.Fprintf(i.output, format, args...)
 }
 
 func (i *Interpreter) println(args ...interface{}) {
