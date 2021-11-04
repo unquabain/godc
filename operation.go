@@ -157,8 +157,7 @@ var MacroQuitOperation = OperationAdapter(func(i *Interpreter) error {
 // PrintOperation implements the 'p' command.
 var PrintOperation = OperationAdapter(func(i *Interpreter) error {
 	p := i.Stack.Peek().Dup()
-	p.UpdatePrecision(i.Precision)
-	i.println(p.Text(i.OutputRadix))
+	i.println(p.Text(int64(i.OutputRadix), i.Precision))
 	return nil
 })
 
@@ -172,10 +171,10 @@ var PrintRawOperation = OperationAdapter(func(i *Interpreter) error {
 		i.print(val)
 		return nil
 	}
-	val.UpdatePrecision(0)
-	biVal := val.intval
+	biVal := val.numval
 	biVal.Abs(biVal)
-	for _, b := range biVal.Bytes() {
+	iVal := (&big.Int{}).Div(biVal.Num(), biVal.Denom())
+	for _, b := range iVal.Bytes() {
 		i.printf(`%c`, b)
 	}
 	return nil
@@ -188,14 +187,13 @@ var PopAndPrintOperation = OperationAdapter(func(i *Interpreter) error {
 	}
 	val := i.Stack.Pop()
 	dup := val.Dup()
-	dup.UpdatePrecision(i.Precision)
-	i.print(dup.Text(i.OutputRadix))
+	i.print(dup.Text(int64(i.OutputRadix), i.Precision))
 	return nil
 })
 
 // PushLengthOperation implements the 'z' command.
 var PushLengthOperation = OperationAdapter(func(i *Interpreter) error {
-	i.Stack.Push(&Value{intval: big.NewInt(int64(i.Stack.Len()))})
+	i.Stack.Push(&Value{numval: big.NewRat(int64(i.Stack.Len()), 1)})
 	return nil
 })
 
@@ -203,9 +201,8 @@ var PushLengthOperation = OperationAdapter(func(i *Interpreter) error {
 var PrintStackOperation = OperationAdapter(func(i *Interpreter) error {
 	for _, num := range i.Stack.values {
 		dup := num.Dup()
-		dup.UpdatePrecision(i.Precision)
 		// dc prints stack in reverse order, so top-of-stack is top-of-list
-		defer func(d *Value) { i.println(d.Text(i.OutputRadix)) }(dup)
+		defer func(d *Value) { i.println(d.Text(int64(i.OutputRadix), i.Precision)) }(dup)
 	}
 	return nil
 })
@@ -344,6 +341,10 @@ var MoveToRegisterOperation = &RegisterOperation{
 			return ErrStackTooShort
 		}
 		register.Clear()
+		v := stack.Peek()
+		fmt.Println("v.Type", v.Type)
+		fmt.Println("v.numval", v.numval)
+		fmt.Println("v.strval", v.strval)
 		register.Push(stack.Pop())
 		return nil
 	},
@@ -398,7 +399,7 @@ var SetPrecisionOperation = OperationAdapter(func(i *Interpreter) error {
 
 // GetPrecisionOperation implements the 'K' command.
 var GetPrecisionOperation = OperationAdapter(func(i *Interpreter) error {
-	i.Stack.Push(&Value{intval: big.NewInt(int64(i.Precision))})
+	i.Stack.Push(&Value{numval: big.NewRat(int64(i.Precision), 1)})
 	return nil
 })
 
@@ -421,7 +422,7 @@ var SetInputRadixOperation = OperationAdapter(func(i *Interpreter) error {
 
 // GetInputRedixOperation implements the 'I' command.
 var GetInputRadixOperation = OperationAdapter(func(i *Interpreter) error {
-	i.Stack.Push(&Value{intval: big.NewInt(int64(i.InputRadix))})
+	i.Stack.Push(&Value{numval: big.NewRat(int64(i.InputRadix), 1)})
 	return nil
 })
 
@@ -441,7 +442,7 @@ var SetOutputRadixOperation = OperationAdapter(func(i *Interpreter) error {
 
 // GetOutputRedixOperation implements the 'I' command.
 var GetOutputRadixOperation = OperationAdapter(func(i *Interpreter) error {
-	i.Stack.Push(&Value{intval: big.NewInt(int64(i.OutputRadix))})
+	i.Stack.Push(&Value{numval: big.NewRat(int64(i.OutputRadix), 1)})
 	return nil
 })
 
@@ -467,21 +468,38 @@ var CommentOperator CommentOperatorType
 type StringBuilder struct {
 	OperationState
 	Value
+	BracketLevel int
 }
 
 // Operate implements the Operator interface.
 // TODO: dc supports nested brackets in strings.
 func (sb *StringBuilder) Operate(i *Interpreter, r rune) (bool, error) {
 	if r == '[' {
-		sb.OperationState = OSHungry
-		sb.Value.Type = VTString
-		sb.Value.strval = []rune{}
-		return false, nil
+		if sb.OperationState == OSNotHungry {
+			sb.OperationState = OSHungry
+			sb.Value.Type = VTString
+			sb.Value.strval = []rune{}
+			return false, nil
+		} else {
+			sb.BracketLevel++
+		}
 	}
 	if r == ']' {
-		sb.OperationState = OSNotHungry
-		i.Stack.Push((&sb.Value).Dup())
-		return true, nil
+		if sb.BracketLevel == 0 {
+			sb.OperationState = OSNotHungry
+			dup := (&sb.Value).Dup()
+			fmt.Println(`(&sb.Value).Type`, (&sb.Value).Type)
+			fmt.Println(`(&sb.Value).numval`, (&sb.Value).numval)
+			fmt.Println(`(&sb.Value).strval`, (&sb.Value).strval)
+
+			fmt.Println(`dup.Type`, dup.Type)
+			fmt.Println(`dup.numval`, dup.numval)
+			fmt.Println(`dup.strval`, dup.strval)
+			i.Stack.Push(dup)
+			return true, nil
+		} else {
+			sb.BracketLevel--
+		}
 	}
 	if sb.OperationState == OSNotHungry {
 		return true, nil
@@ -562,24 +580,21 @@ func (so *MacroOperation) Operate(i *Interpreter, register rune) (bool, error) {
 // ExecuteMacroIfGTOperation implements the '>' command.
 var ExecuteMacroIfGTOperation = &MacroOperation{
 	Predicate: func(left, right *Value) bool {
-		left.MatchPrecision(right)
-		return left.intval.Cmp(right.intval) > 0
+		return left.numval.Cmp(right.numval) > 0
 	},
 }
 
 // ExecuteMacroIfLTOperation implements the '<' command.
 var ExecuteMacroIfLTOperation = &MacroOperation{
 	Predicate: func(left, right *Value) bool {
-		left.MatchPrecision(right)
-		return left.intval.Cmp(right.intval) < 0
+		return left.numval.Cmp(right.numval) < 0
 	},
 }
 
 // ExecuteMacroIfEqOperation implements the '=' command.
 var ExecuteMacroIfEqOperation = &MacroOperation{
 	Predicate: func(left, right *Value) bool {
-		left.MatchPrecision(right)
-		return left.intval.Cmp(right.intval) == 0
+		return left.numval.Cmp(right.numval) == 0
 	},
 }
 

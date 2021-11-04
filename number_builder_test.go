@@ -26,7 +26,7 @@ func TestNumberBuilder(t *testing.T) {
 		}
 		for i, exp := range expected {
 			val := interp.Stack.Pop()
-			actual := val.String()
+			actual := val.PrecisionString(int64(interp.Precision))
 			if actual != exp {
 				t.Fatalf(`unexpected value for argument %d: expected %s; received %s`, i, exp, actual)
 			}
