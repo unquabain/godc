@@ -28,8 +28,6 @@ const (
 	VTString ValueType = true
 )
 
-var ten = big.NewInt(10)
-
 // Value can be either a number, represented as an integer and a base-10 precision,
 // or a string.
 type Value struct {
@@ -55,7 +53,7 @@ func (n *Value) Text(radix, precision int64) string {
 	strVal := intPart.Text(int(radix))
 
 	if precision == 0 {
-		return fmt.Sprintf(`%s%s`, strSign, strVal)
+		return strings.ToUpper(fmt.Sprintf(`%s%s`, strSign, strVal))
 	}
 
 	// get the fractional part
@@ -73,7 +71,7 @@ func (n *Value) Text(radix, precision int64) string {
 		b.WriteString(digit)
 	}
 	strFrac := b.String()
-	return fmt.Sprintf(`%s%s.%s`, strSign, strVal, strFrac)
+	return strings.ToUpper(fmt.Sprintf(`%s%s.%s`, strSign, strVal, strFrac))
 }
 
 func (n *Value) PrecisionString(precision int64) string {

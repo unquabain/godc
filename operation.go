@@ -341,10 +341,6 @@ var MoveToRegisterOperation = &RegisterOperation{
 			return ErrStackTooShort
 		}
 		register.Clear()
-		v := stack.Peek()
-		fmt.Println("v.Type", v.Type)
-		fmt.Println("v.numval", v.numval)
-		fmt.Println("v.strval", v.strval)
 		register.Push(stack.Pop())
 		return nil
 	},
@@ -488,13 +484,6 @@ func (sb *StringBuilder) Operate(i *Interpreter, r rune) (bool, error) {
 		if sb.BracketLevel == 0 {
 			sb.OperationState = OSNotHungry
 			dup := (&sb.Value).Dup()
-			fmt.Println(`(&sb.Value).Type`, (&sb.Value).Type)
-			fmt.Println(`(&sb.Value).numval`, (&sb.Value).numval)
-			fmt.Println(`(&sb.Value).strval`, (&sb.Value).strval)
-
-			fmt.Println(`dup.Type`, dup.Type)
-			fmt.Println(`dup.numval`, dup.numval)
-			fmt.Println(`dup.strval`, dup.strval)
 			i.Stack.Push(dup)
 			return true, nil
 		} else {
