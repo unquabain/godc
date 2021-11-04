@@ -79,7 +79,6 @@ func (n *Value) PrecisionString(precision int64) string {
 }
 
 // Format tries to implement fmt.Formatter
-// TODO: Doesn't seem to work right.
 func (n *Value) Format(f fmt.State, verb rune) {
 	switch n.Type {
 	case VTNumber:

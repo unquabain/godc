@@ -479,4 +479,9 @@ func TestPrintOperations(t *testing.T) {
 		test(`4k_310400273487.1234P`)
 		expect(`HELLO`)
 	})
+
+	t.Run(`test a string with nested brackets`, func(t *testing.T) {
+		test(`[a string with [nested] brackets]`)
+		expect(`a string with [nested] brackets`)
+	})
 }

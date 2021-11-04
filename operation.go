@@ -468,7 +468,6 @@ type StringBuilder struct {
 }
 
 // Operate implements the Operator interface.
-// TODO: dc supports nested brackets in strings.
 func (sb *StringBuilder) Operate(i *Interpreter, r rune) (bool, error) {
 	if r == '[' {
 		if sb.OperationState == OSNotHungry {
