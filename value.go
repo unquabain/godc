@@ -28,143 +28,107 @@ const (
 	VTString ValueType = true
 )
 
-var ten = big.NewInt(10)
-
 // Value can be either a number, represented as an integer and a base-10 precision,
 // or a string.
 type Value struct {
-	intval    *big.Int
-	strval    []rune
-	precision int
-	Type      ValueType
+	numval *big.Rat
+	strval []rune
+	Type   ValueType
 }
 
-func precisionToFactor(precision int) *big.Int {
-	var pow big.Int
-	prec := big.NewInt(int64(precision))
-	mod := (*big.Int)(nil)
-	return (&pow).Exp(ten, prec, mod)
-}
-
-func (n *Value) Text(radix uint8) string {
+func (n *Value) Text(radix, precision int64) string {
 	// If the value is a string, print the string
 	if n.Type == VTString {
 		return string(n.strval)
 	}
-	// If the value is an integer, let math/big
-	// handle it.
-	if n.precision == 0 {
-		return strings.ToUpper(n.intval.Text(int(radix)))
+
+	val := n.numval
+	strSign := ``
+	if val.Sign() < 0 {
+		strSign = `-`
 	}
-
-	// We've got a little math to do.
-
-	// The power of 10 corresponding to our precision value
-	factor := precisionToFactor(n.precision)
-
-	// The *math/bit.Int that holds our multiplied integer
-	val := n.intval
-
-	// The rounding gets a little exciting for negative numbers.
-	// Let's deal only with absolutes, like a Sith
-	sign := val.Sign()
 	val = val.Abs(val)
+	intPart := (&big.Int{}).Div(val.Num(), val.Denom())
+	fracPart := (&big.Rat{}).Sub(val, (&big.Rat{}).SetInt(intPart))
+	strVal := intPart.Text(int(radix))
 
-	// Getting the integer portion is easy.
-	intVal := big.NewInt(0)
-	intVal.Div(val, factor)
-
-	// Getting the fractional portion is a bit
-	// trickier.
-	fracVal := big.NewInt(0)
-	fracVal.Sub(val, big.NewInt(0).Mul(intVal, factor))
-
-	// fracVal is now x such that (10^precision)/x is the actual
-	// fractional value.
-
-	// Get radix^precision
-	bigRadix := big.NewInt(int64(radix))
-	bigRadix.Exp(bigRadix, big.NewInt(int64(n.precision)), nil)
-
-	// Convert fracVal so that it's x in frac = (radix^precision)/x
-	// Go big before going small to try to preserve as much precision
-	// as possible.
-	fracVal.Mul(fracVal, bigRadix)
-	fracVal.Div(fracVal, factor)
-
-	// If fracVal is less than 1/radix, we're going to have to
-	// insert leading zeroes.
-	fracFormat := fmt.Sprintf(`%%0%ds`, n.precision)
-
-	// Get the funky formats.
-	intStr := intVal.Text(int(radix))
-	fracStr := fracVal.Text(int(radix))
-
-	// Chop off any extra digits we might have picked up.
-	if len(fracStr) > n.precision {
-		fracStr = fracStr[:n.precision]
+	if precision == 0 {
+		return strings.ToUpper(fmt.Sprintf(`%s%s`, strSign, strVal))
 	}
 
-	// Add those leading zeroes
-	fracStr = fmt.Sprintf(fracFormat, fracStr)
-
-	// Print it with a decimal, remembering to add the sign
-	// back in.
-	if sign < 0 {
-		return strings.ToUpper(fmt.Sprintf(`-%s.%s`, intStr, fracStr))
+	// get the fractional part
+	r := (&big.Rat{}).SetInt64(radix)
+	b := &strings.Builder{}
+	for p := precision; p > 0; p-- {
+		if fracPart.Sign() == 0 {
+			b.WriteRune('0')
+			continue
+		}
+		fracPart.Mul(fracPart, r)
+		intPart.Div(fracPart.Num(), fracPart.Denom())
+		fracPart.Sub(fracPart, (&big.Rat{}).SetInt(intPart))
+		digit := intPart.Text(int(radix))
+		b.WriteString(digit)
 	}
-	return strings.ToUpper(fmt.Sprintf(`%s.%s`, intStr, fracStr))
+	strFrac := b.String()
+	return strings.ToUpper(fmt.Sprintf(`%s%s.%s`, strSign, strVal, strFrac))
 }
 
-// String implements the fmt.Stringer interface
-func (n *Value) String() string {
-	return n.Text(10)
+func (n *Value) PrecisionString(precision int64) string {
+	return n.Text(10, precision)
 }
 
 // Format tries to implement fmt.Formatter
 // TODO: Doesn't seem to work right.
 func (n *Value) Format(f fmt.State, verb rune) {
-	if verb != 's' && verb != 'v' {
-		return
+	switch n.Type {
+	case VTNumber:
+		if verb != 'f' && verb != 'v' {
+			f.Write([]byte(`unknown verb for number type Value`))
+			return
+		}
+		prec, ok := f.Precision()
+		if !ok {
+			prec = 0
+		}
+		f.Write([]byte(n.Text(10, int64(prec))))
+	case VTString:
+		if verb != 's' && verb != 'v' {
+			f.Write([]byte(`unknown verb for string type Value`))
+			return
+		}
+		f.Write([]byte(string(n.strval)))
+	default:
+		f.Write([]byte(`unknown type for Value`))
 	}
-	f.Write([]byte(n.Text(10)))
 }
 
-// UpdatePrecision sets the precision, and also multiplies
-// or divides the intval by 10 so the logical value is the
-// same.
-func (n *Value) UpdatePrecision(newprecision int) {
-	if !n.Type == VTNumber {
-		return
+// CrossMultiply returns two numerators and their common denominator
+func (n *Value) CrossMultiply(m *Value) (*big.Int, *big.Int, *big.Int, error) {
+	if n.Type != VTNumber {
+		return nil, nil, nil, ErrNotANumber
 	}
-	if newprecision > n.precision {
-		n.intval.Mul(n.intval, precisionToFactor(newprecision-n.precision))
-	} else {
-		n.intval.Div(n.intval, precisionToFactor(n.precision-newprecision))
+	if m.Type != VTNumber {
+		return nil, nil, nil, ErrNotANumber
 	}
-	n.precision = newprecision
-}
-
-// MatchPrecision makes both the receiver and the argument
-// the same precision, matching whichever has greater precision.
-func (n *Value) MatchPrecision(m *Value) {
-	if n.precision > m.precision {
-		n, m = m, n
-	}
-	n.UpdatePrecision(m.precision)
+	denom := (&big.Int{}).Mul(n.numval.Denom(), m.numval.Denom())
+	nnum := (&big.Int{}).Mul(n.numval.Num(), m.numval.Denom())
+	mnum := (&big.Int{}).Mul(m.numval.Num(), n.numval.Denom())
+	return nnum, mnum, denom, nil
 }
 
 // Dup makes a copy of the value
 func (n *Value) Dup() *Value {
 	dup := new(Value)
 	dup.Type = n.Type
-	if n.intval != nil {
-		dup.intval = big.NewInt(0)
-		dup.intval.Set(n.intval)
+	if n.numval != nil {
+		dup.numval = &big.Rat{}
+		dup.numval.Set(n.numval)
 	}
-	dup.strval = make([]rune, len(n.strval))
-	copy(dup.strval, n.strval)
-	dup.precision = n.precision
+	if n.strval != nil {
+		dup.strval = make([]rune, len(n.strval))
+		copy(dup.strval, n.strval)
+	}
 	return dup
 }
 
@@ -177,8 +141,7 @@ func (n *Value) Add(m *Value) error {
 	if m.Type != VTNumber {
 		return ErrNotANumber
 	}
-	n.MatchPrecision(m)
-	n.intval.Add(n.intval, m.intval)
+	n.numval.Add(n.numval, m.numval)
 	return nil
 }
 
@@ -191,8 +154,7 @@ func (n *Value) Subtract(m *Value) error {
 	if m.Type != VTNumber {
 		return ErrNotANumber
 	}
-	n.MatchPrecision(m)
-	n.intval.Sub(n.intval, m.intval)
+	n.numval.Sub(n.numval, m.numval)
 	return nil
 }
 
@@ -207,8 +169,7 @@ func (n *Value) Multiply(m *Value) error {
 	if m.Type != VTNumber {
 		return ErrNotANumber
 	}
-	n.precision += m.precision
-	n.intval.Mul(n.intval, m.intval)
+	n.numval.Mul(n.numval, m.numval)
 	return nil
 }
 
@@ -223,16 +184,11 @@ func (n *Value) Divide(m *Value) error {
 	if m.Type != VTNumber {
 		return ErrNotANumber
 	}
-	if m.intval.Sign() == 0 {
+	if m.numval.Sign() == 0 {
 		return ErrDivideByZero
 	}
-	// Make sure we've got enough zeroes to play with
-	n.MatchPrecision(m)                          // Upgrade to the greatest precision
-	n.UpdatePrecision(n.precision + m.precision) // We're going to lose m.precision in the divide
-
 	// Do the math
-	n.intval.Div(n.intval, m.intval)
-	n.precision -= m.precision
+	n.numval.Mul(n.numval, (&big.Rat{}).Inv(m.numval))
 	return nil
 }
 
@@ -242,15 +198,16 @@ func (n *Value) IntVal() error {
 	if n.Type != VTNumber {
 		return ErrNotANumber
 	}
-	n.UpdatePrecision(0)
+	ival := (&big.Int{}).Div(n.numval.Num(), n.numval.Denom())
+	n.numval.SetInt(ival)
 	return nil
 }
 
 // Int returns the value as an int, discarding
 // any fractional portion.
-func (n *Value) Int() int {
+func (n *Value) Int() int64 {
 	n.IntVal()
-	return int(n.intval.Int64())
+	return n.numval.Num().Int64()
 }
 
 // FracVal discards any integer portion, keeping
@@ -266,6 +223,13 @@ func (n *Value) FracVal() error {
 	return n.Subtract(d)
 }
 
+func (n *Value) IsInt() bool {
+	if n.Type != VTNumber {
+		return false
+	}
+	return n.numval.IsInt()
+}
+
 // QutotientRemainder divides n by m (or m into n) and returns
 // an integer quotient and the modulo.
 // Returns an error if either value is not a number, or if m == 0
@@ -276,12 +240,30 @@ func (n *Value) QuotientRemainder(m *Value) (*Value, *Value, error) {
 	if m.Type != VTNumber {
 		return nil, nil, ErrNotANumber
 	}
-	if m.intval.Sign() == 0 {
+	if m.numval.Sign() == 0 {
 		return nil, nil, ErrDivideByZero
 	}
-	n.MatchPrecision(m)
-	n.intval.QuoRem(n.intval, m.intval, m.intval)
-	return n, m, nil
+	q := &big.Int{}
+	r := &big.Int{}
+	if n.IsInt() && m.IsInt() {
+		ni := n.numval.Num()
+		mi := m.numval.Num()
+		q.QuoRem(ni, mi, r)
+		return &Value{numval: (&big.Rat{}).SetInt(q)},
+			&Value{numval: (&big.Rat{}).SetInt(r)},
+			nil
+	}
+	// Use integer math to drop fractional parts.
+	// x / y = q + r/y => x % y = (q, r)
+	// (x/c) / (y/c) = (q/c) + (rc/y) => (x/c) % (y/c) = ((q/c), rc)
+	x, y, c, err := n.CrossMultiply(m)
+	if err != nil {
+		return nil, nil, err
+	}
+	q.QuoRem(x, y, r)
+	quotient := &Value{numval: (&big.Rat{}).SetFrac(q, c)}
+	remainder := &Value{numval: (&big.Rat{}).SetInt(r.Mul(r, c))}
+	return quotient, remainder, nil
 }
 
 // Exponent raises n to the integer value of m.
@@ -294,14 +276,17 @@ func (n *Value) Exponent(m *Value) error {
 	if m.Type != VTNumber {
 		return ErrNotANumber
 	}
-	m.UpdatePrecision(0)
-	if m.intval.Sign() <= 0 {
+	if m.numval.Sign() <= 0 {
 		return ErrWholeExponentsOnly
 	}
-	n.intval.Exp(n.intval, m.intval, nil)
-	afterPower := n.precision * (m.Int() - 1)
-	afterFactor := precisionToFactor(afterPower)
-	n.intval.Div(n.intval, afterFactor)
+	if err := m.IntVal(); err != nil {
+		return err
+	}
+	num := n.numval.Num()
+	denom := n.numval.Denom()
+	num.Exp(num, m.numval.Num(), nil)
+	denom.Exp(denom, m.numval.Num(), nil)
+	n.numval.SetFrac(num, denom)
 	return nil
 }
 
@@ -316,13 +301,20 @@ func (n *Value) ModExponent(e, m *Value) error {
 	if e.Type != VTNumber {
 		return ErrNotANumber
 	}
-	n.UpdatePrecision(0)
-	e.UpdatePrecision(0)
-	m.UpdatePrecision(0)
-	if e.intval.Sign() <= 0 {
+	if e.numval.Sign() <= 0 {
 		return ErrWholeExponentsOnly
 	}
-	n.intval.Exp(n.intval, e.intval, m.intval)
+	if err := n.IntVal(); err != nil {
+		return err
+	}
+	if err := e.IntVal(); err != nil {
+		return err
+	}
+	if err := m.IntVal(); err != nil {
+		return err
+	}
+	val := (&big.Int{}).Exp(n.numval.Num(), e.numval.Num(), m.numval.Num())
+	n.numval.SetInt(val)
 	return nil
 }
 
@@ -331,11 +323,13 @@ func (n *Value) Sqrt() error {
 	if n.Type != VTNumber {
 		return ErrNotANumber
 	}
-	if n.intval.Sign() < 0 {
+	if n.numval.Sign() < 0 {
 		return ErrNoImaginaryNumbers
 	}
-	n.UpdatePrecision(n.precision * 2)
-	n.intval.Sqrt(n.intval)
-	n.precision /= 2
+	num := n.numval.Num()
+	denom := n.numval.Denom()
+	num.Sqrt(num)
+	denom.Sqrt(denom)
+	n.numval.SetFrac(num, denom)
 	return nil
 }

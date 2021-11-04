@@ -20,11 +20,11 @@ type Interpreter struct {
 	Stack            *Stack
 	Registers        map[rune]*Stack
 	NumberBuilder    *NumberBuilder
-	Precision        int
+	Precision        int64
 	CurrentOperation Operation
 	Operations       map[rune]Operation
 	output           io.Writer
-	QuitLevel        int
+	QuitLevel        int64
 	InputRadix       uint8
 	OutputRadix      uint8
 }

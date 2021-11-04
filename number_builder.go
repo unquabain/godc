@@ -73,83 +73,45 @@ func NewNumberBuilder() *NumberBuilder {
 	}
 }
 
+func (n *NumberBuilder) reset() {
+	n.buff.Reset()
+	n.dotSeen = false
+	n.sign = false
+	n.State = OSNotHungry
+}
+
 // Flush finalizes the number and pushes it onto the stack.
 func (n *NumberBuilder) Flush(i *Interpreter) error {
 	var v Value
-	num := big.NewInt(0)
-	str := n.buff.String()
-	prec := 0
+	s := n.buff.String()
+	numerator := &big.Int{}
+	denominator := &big.Int{}
 
 	if n.dotSeen {
-		frac := big.NewInt(0)
-		parts := strings.Split(str, `.`)
-		if len(parts) != 2 {
-			return fmt.Errorf(`unexpected number of parts in %q: expected 2, received %d`, str, len(parts))
-		}
-		if len(parts[0]) > 0 {
-			_, ok := num.SetString(parts[0], int(i.InputRadix))
-			if !ok {
-				return fmt.Errorf(`unable to unmarshal integer part of %q`, str)
-			}
-		}
-		prec = len(parts[1])
-		if prec > 0 {
-			radix := big.NewInt(int64(i.InputRadix))
-			_, ok := frac.SetString(parts[1], int(i.InputRadix))
-			if !ok {
-				return fmt.Errorf(`unable to unmarshal fractional part of %q`, str)
-			}
-			// Need to left shift frac so it's the right precision.
-			if i.Precision > prec {
-				frac.Mul(
-					frac,
-					big.NewInt(0).Exp(
-						radix,
-						big.NewInt(int64(i.Precision-prec)),
-						nil,
-					),
-				)
-			} else if prec > i.Precision {
-				frac.Div(
-					frac,
-					big.NewInt(0).Exp(
-						radix,
-						big.NewInt(int64(prec-i.Precision)),
-						nil,
-					),
-				)
-
-			}
-			// frac is x in frac = x/(radix^prec)
-			// need to make it x in frac = x/(10^prec)
-			radixPrec := big.NewInt(int64(i.InputRadix))
-			radixPrec = radixPrec.Exp(radixPrec, big.NewInt(int64(i.Precision)), nil)
-			factor := precisionToFactor(i.Precision)
-			frac.Mul(frac, factor)
-			frac.Div(frac, radixPrec)
-
-			// Now we're in base 10. Slide the integer part to the
-			// left and insert the fractional part.
-			num.Mul(num, precisionToFactor(i.Precision))
-			num.Add(num, frac)
-			v.precision = i.Precision
-		}
-		n.dotSeen = false
-	} else {
-		_, ok := num.SetString(str, int(i.InputRadix))
+		pointPos := strings.LastIndex(s, `.`) + 1
+		fracDigits := len(s) - pointPos
+		withoutPoints := strings.Replace(s, `.`, ``, 1)
+		_, ok := numerator.SetString(withoutPoints, int(i.InputRadix))
 		if !ok {
-			return fmt.Errorf(`unable to unmarshal integer %q`, str)
+			return fmt.Errorf(`could not parse %s as a radix %d integer`, s, i.InputRadix)
 		}
+		denominator.Exp(big.NewInt(int64(i.InputRadix)), big.NewInt(int64(fracDigits)), nil)
+	} else {
+		_, ok := numerator.SetString(s, int(i.InputRadix))
+		if !ok {
+			return fmt.Errorf(`could not parse %s as a radix %d integer`, s, i.InputRadix)
+		}
+		denominator.SetInt64(1)
 	}
+	num := (&big.Rat{}).SetFrac(numerator, denominator)
 
 	if n.sign {
 		num.Neg(num)
-		n.sign = false
 	}
-	v.intval = num
-	v.UpdatePrecision(i.Precision)
+
+	v.numval = num
+
 	i.Stack.Push(&v)
-	n.buff.Reset()
-	n.State = OSNotHungry
+	n.reset()
 	return nil
 }

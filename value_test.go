@@ -2,206 +2,137 @@ package main
 
 import (
 	"math/big"
-	"regexp"
 	"testing"
 )
 
-func newValue(val int64, precision int) *Value {
+func newValue(num, denom int64) *Value {
 	n := new(Value)
-	n.intval = big.NewInt(val)
-	n.precision = precision
+	n.numval = big.NewRat(num, denom)
 	return n
 }
 
 func TestValueString(t *testing.T) {
-	n := newValue(10000, 2)
+	n := newValue(10000, 100)
 	expected := `100.00`
-	if actual := n.String(); actual != expected {
+	if actual := n.PrecisionString(2); actual != expected {
 		t.Fatalf(`expected %q, received %q`, expected, actual)
 	}
-	expected = `10.000`
-	n.precision = 3
-	if actual := n.String(); actual != expected {
+	expected = `100.000`
+	if actual := n.PrecisionString(3); actual != expected {
 		t.Fatalf(`expected %q, received %q`, expected, actual)
 	}
-	n.intval.Add(n.intval, big.NewInt(10))
+	if err := n.Add(newValue(10, 100)); err != nil {
+		t.Fatalf(`could not add: %v`, err)
+	}
 	expected = `100.10`
-	n.precision = 2
-	if actual := n.String(); actual != expected {
+	if actual := n.PrecisionString(2); actual != expected {
 		t.Fatalf(`expected %q, received %q`, expected, actual)
 	}
-	expected = `10.010`
-	n.precision = 3
-	if actual := n.String(); actual != expected {
+	expected = `100.100`
+	if actual := n.PrecisionString(3); actual != expected {
 		t.Fatalf(`expected %q, received %q`, expected, actual)
 	}
 }
 
 func TestValueText(t *testing.T) {
-	test := func(input, precision int64, radix uint8, expected string) {
-		val := &Value{
-			intval:    big.NewInt(input),
-			precision: int(precision),
-		}
-		actual := val.Text(radix)
+	test := func(num, denom, precision int64, radix uint8, expected string) {
+		val := newValue(num, denom)
+		actual := val.Text(int64(radix), precision)
 		if actual != expected {
-			t.Fatalf(`expected %d * 10^-%d in radix %d to be %q; was %q`, input, precision, radix, expected, actual)
+			t.Fatalf(`expected %d / %d radix %d, precision %d to be %q; was %q`, num, denom, radix, precision, expected, actual)
 		}
 	}
 
 	t.Run(`some easy integers`, func(t *testing.T) {
-		test(256, 0, 16, `100`)
-		test(64, 0, 8, `100`)
-		test(27, 0, 3, `1000`)
+		test(256, 1, 0, 16, `100`)
+		test(64, 1, 0, 8, `100`)
+		test(27, 1, 0, 3, `1000`)
 
-		test(55, 0, 16, `37`)
+		test(55, 1, 0, 16, `37`)
 	})
 
 	t.Run(`some easy integers with precision`, func(t *testing.T) {
-		test(2560, 1, 16, `100.0`)
-		test(6400, 2, 8, `100.00`)
-		test(27000, 3, 3, `1000.000`)
+		test(2560, 10, 1, 16, `100.0`)
+		test(6400, 100, 2, 8, `100.00`)
+		test(27000, 1000, 3, 3, `1000.000`)
 
-		test(550000, 4, 16, `37.0000`)
+		test(550000, 10000, 4, 16, `37.0000`)
 	})
 
 	t.Run(`some rational fractions`, func(t *testing.T) {
-		test(15, 1, 16, `1.8`)         // 0x1.8 = 1.5
-		test(25, 2, 16, `0.40`)        // 0x0.40 = 0.25
-		test(640625, 4, 16, `40.1000`) // 0x40.1 = 64.0625
-		test(3, 1, 16, `0.4`)          // 0x0.48 = 0.3 Values are truncated.
+		test(15, 10, 1, 16, `1.8`)            // 0x1.8 = 1.5
+		test(25, 100, 2, 16, `0.40`)          // 0x0.40 = 0.25
+		test(640625, 10000, 4, 16, `40.1000`) // 0x40.1 = 64.0625
+		test(3, 10, 1, 16, `0.4`)             // 0x0.48 = 0.3 Values are truncated.
 	})
 }
 
-func TestUpdatePrecision(t *testing.T) {
-	n := newValue(100, 2)
-	expectedPattern := regexp.MustCompile(`1(\.0+)?`)
-	testPrecision := func(precision int, expectedInt int64) {
-		expected := big.NewInt(expectedInt)
-		n.UpdatePrecision(precision)
-		if actual := n.precision; actual != precision {
-			t.Fatalf(`failed to set precision: expected %d; actual %d`, precision, actual)
-		}
-		if actual := n.intval; actual.Cmp(expected) != 0 {
-			t.Fatalf(`expected %d, received %d`, expected, actual)
-		}
-		if actual := n.String(); !expectedPattern.MatchString(actual) {
-			t.Fatalf(`expected String() to eq "1"; was %q`, actual)
-		}
-	}
-	testPrecision(4, 10000)
-	testPrecision(6, 1000000)
-	testPrecision(2, 100)
-	testPrecision(0, 1)
-}
-
-func TestMatchPrecision(t *testing.T) {
-	n := newValue(0, 0)
-	m := newValue(0, 0)
-
-	test := func(expected int) {
-		if n.precision != m.precision {
-			t.Fatalf(`expected n.precision %d to match m.precision %d`, n.precision, m.precision)
-		}
-		if n.precision != expected {
-			t.Fatalf(`expected precision to equal %d; found %d`, expected, n.precision)
-		}
-	}
-
-	n.precision = 3
-	m.precision = 6
-	n.MatchPrecision(m)
-	test(6)
-
-	n.precision = 6
-	m.precision = 3
-	n.MatchPrecision(m)
-	test(6)
-
-	n.precision = 3
-	m.precision = 6
-	m.MatchPrecision(n)
-	test(6)
-
-	n.precision = 6
-	m.precision = 3
-	m.MatchPrecision(n)
-	test(6)
-}
-
 func TestAdd(t *testing.T) {
-	n := newValue(1001, 2)
-	m := newValue(2002, 1)
+	n := newValue(1001, 100)
+	m := newValue(2002, 10)
 
-	expected := big.NewInt(21021)
+	expected := big.NewRat(21021, 100)
 
 	n.Add(m)
-	if actual := n.intval; actual.Cmp(expected) != 0 {
-		t.Fatalf(`expected sum to be %d; got %d`, expected, actual)
-	}
-	if actual := n.precision; actual != 2 {
-		t.Fatalf(`expected output precision to be 2, was %d`, actual)
+	if actual := n.numval; actual.Cmp(expected) != 0 {
+		t.Fatalf(`expected sum to be %v; got %v`, expected, actual)
 	}
 }
 
 func TestSubtract(t *testing.T) {
-	n := newValue(21021, 2)
-	m := newValue(2002, 1)
+	n := newValue(21021, 100)
+	m := newValue(2002, 10)
 
-	expected := big.NewInt(1001)
+	expected := big.NewRat(1001, 100)
 
 	n.Subtract(m)
-	if actual := n.intval; actual.Cmp(expected) != 0 {
-		t.Fatalf(`expected sum to be %d; got %d`, expected, actual)
-	}
-	if actual := n.precision; actual != 2 {
-		t.Fatalf(`expected output precision to be 2, was %d`, actual)
+	if actual := n.numval; actual.Cmp(expected) != 0 {
+		t.Fatalf(`expected sum to be %v; got %v`, expected, actual)
 	}
 }
 
 func TestMultply(t *testing.T) {
-	n := newValue(300, 2)
-	m := newValue(500, 2)
+	n := newValue(300, 100)
+	m := newValue(500, 100)
 
 	n.Multiply(m)
-	expected := big.NewInt(150000)
-	if actual := n.intval; actual.Cmp(expected) != 0 {
-		t.Fatalf(`expected value was %d; found %d`, expected, actual)
-	}
-	expectedPrec := 4
-	if actual := n.precision; actual != expectedPrec {
-		t.Fatalf(`expected precision was %d; found %d`, expected, actual)
+	expected := big.NewRat(150000, 10000)
+	if actual := n.numval; actual.Cmp(expected) != 0 {
+		t.Fatalf(`expected value was %v; found %v`, expected, actual)
 	}
 
-	n.intval = big.NewInt(500)
-	n.precision = 2
+	n.numval = big.NewRat(500, 100)
 
-	m.intval = big.NewInt(300)
-	m.precision = 2
+	m.numval = big.NewRat(300, 100)
 
 	n.Multiply(m)
-	expected = big.NewInt(150000)
-	if actual := n.intval; actual.Cmp(expected) != 0 {
-		t.Fatalf(`expected value was %d; found %d`, expected, actual)
-	}
-	expectedPrec = 4
-	if actual := n.precision; actual != expectedPrec {
-		t.Fatalf(`expected precision was %d; found %d`, expected, actual)
+	expected = big.NewRat(150000, 10000)
+	if actual := n.numval; actual.Cmp(expected) != 0 {
+		t.Fatalf(`expected value was %v; found %v`, expected, actual)
 	}
 }
 
+func pow(prec int64) int64 {
+	if prec == 0 {
+		return 1
+	}
+	return (&big.Int{}).Exp(
+		big.NewInt(10),
+		big.NewInt(prec),
+		nil,
+	).Int64()
+}
+
 func TestDivide(t *testing.T) {
-	test := func(nval int64, nprec int, mval int64, mprec int, eval int64, eprec int) {
-		n := newValue(nval, nprec)
-		m := newValue(mval, mprec)
+	test := func(nval, nprec, mval, mprec, eval, eprec int64) {
+		n := newValue(nval, pow(nprec))
+		m := newValue(mval, pow(mprec))
+		expected := big.NewRat(eval, pow(eprec))
 
 		n.Divide(m)
 
-		if actual := n.precision; actual != eprec {
-			t.Fatalf(`expected precision %d; found precision %d`, eprec, actual)
-		}
-		if actual := n.intval; actual.Int64() != eval {
-			t.Fatalf(`expected value %d; found value %d`, eval, actual)
+		if actual := n.numval; actual.Cmp(expected) != 0 {
+			t.Fatalf(`expected value %v; found value %v`, eval, actual)
 		}
 	}
 	test(50, 1, 20, 1, 25, 1)       //   5.0  / 2.0   =  2.5
@@ -211,8 +142,8 @@ func TestDivide(t *testing.T) {
 	test(100, 2, 4, 0, 25, 2)       //   1.00 / 4     = 0.25
 	test(500000, 4, 20000, 4, 250000, 4)
 
-	n := newValue(10, 0)
-	m := newValue(0, 0)
+	n := newValue(10, pow(0))
+	m := newValue(0, pow(0))
 	err := n.Divide(m)
 	if err == nil {
 		t.Fatalf(`expected divide by zero error: received none`)
@@ -223,14 +154,62 @@ func TestDivide(t *testing.T) {
 }
 
 func TestExponent(t *testing.T) {
-	n := newValue(3, 0)
+	n := newValue(3, pow(0))
 
-	m := newValue(3, 0)
+	m := newValue(3, pow(0))
 
 	n.Exponent(m)
 
-	expected := big.NewInt(27)
-	if actual := n.intval; actual.Cmp(expected) != 0 {
-		t.Fatalf(`expected 3*3 to equal %d; was %d`, expected, actual)
+	expected := big.NewRat(27, 1)
+	if actual := n.numval; actual.Cmp(expected) != 0 {
+		t.Fatalf(`expected 3*3 to equal %v; was %v`, expected, actual)
 	}
+}
+
+func TestValueDup(t *testing.T) {
+	val := &Value{
+		Type:   VTNumber,
+		numval: big.NewRat(50, 1),
+		strval: []rune(`test test test`),
+	}
+
+	dup := val.Dup()
+	t.Run(`all values filled out`, func(t *testing.T) {
+		if actual := dup.Type; actual != val.Type {
+			t.Fatalf(`expected Type %v; found %v`, actual, val.Type)
+		}
+		if actual := dup.numval; actual.Cmp(val.numval) != 0 {
+			t.Fatalf(`expected numval %v; found %v`, actual, val.numval)
+		}
+		if actual := dup.strval; string(actual) != string(val.strval) {
+			t.Fatalf(`expected strval %v; found %v`, actual, val.strval)
+		}
+	})
+	val.strval = nil
+	dup = val.Dup()
+	t.Run(`no strval`, func(t *testing.T) {
+		if actual := dup.Type; actual != val.Type {
+			t.Fatalf(`expected Type %v; found %v`, actual, val.Type)
+		}
+		if actual := dup.numval; actual.Cmp(val.numval) != 0 {
+			t.Fatalf(`expected numval %v; found %v`, actual, val.numval)
+		}
+		if actual := dup.strval; actual != nil {
+			t.Fatalf(`expected strval %v; found %v`, actual, val.strval)
+		}
+	})
+	val.numval = nil
+	val.strval = []rune(`test test test`)
+	dup = val.Dup()
+	t.Run(`no numval`, func(t *testing.T) {
+		if actual := dup.Type; actual != val.Type {
+			t.Fatalf(`expected Type %v; found %v`, actual, val.Type)
+		}
+		if actual := dup.numval; actual != nil {
+			t.Fatalf(`expected numval %v; found %v`, actual, val.numval)
+		}
+		if actual := dup.strval; string(actual) != string(val.strval) {
+			t.Fatalf(`expected strval %v; found %v`, actual, val.strval)
+		}
+	})
 }
